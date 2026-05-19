@@ -1,4 +1,5 @@
 -- Generate Go template for go.mod file
+-- MVP: pgx-only, no transaction manager
 
 let generateGoMod : Text -> Text -> List Text -> Text
     = \(moduleName : Text) -> \(goVersion : Text) -> \(dependencies : List Text) ->
@@ -22,10 +23,14 @@ ${depsBlock}
 ''
 
 -- Default dependencies for pgx v5 (minimal, MVP)
+-- Minimum Go version: 1.26
 let defaultDependencies : List Text
-    = [ "github.com/jackc/pgx/v5 v5.5.5"
+    = [ "github.com/jackc/pgx/v5 v5.9.2"
       ]
+
+let defaultGoVersion : Text = "1.26"
 
 in  { generateGoMod
     , defaultDependencies
+    , defaultGoVersion
     }

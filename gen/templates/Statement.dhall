@@ -9,7 +9,7 @@ let Cardinality = < Optional | Single | Multiple >
 -- Generate function for Optional cardinality (can return nil without error)
 let generateOptionalFunction : Text -> Text -> List Text -> List Text -> Text
     = \(functionName : Text) -> \(sql : Text) -> \(inputFields : List Text) -> \(outputFields : List Text) ->
-        let hasInput = !Prelude.List.null Text inputFields
+        let hasInput = Prelude.List.null Text inputFields == False
         let inputParam = if hasInput then ", params ${functionName}Params" else ""
         let queryArgs = if hasInput then ", " ++ Prelude.Text.concatSep ", " (Prelude.List.map Text Text (\(f : Text) -> "params.${f}") inputFields) else ""
 
@@ -35,7 +35,7 @@ func (q *Queries) ${functionName}(ctx context.Context${inputParam}) (*${function
 -- Generate function for Single cardinality (must return exactly one row)
 let generateSingleFunction : Text -> Text -> List Text -> List Text -> Text
     = \(functionName : Text) -> \(sql : Text) -> \(inputFields : List Text) -> \(outputFields : List Text) ->
-        let hasInput = !Prelude.List.null Text inputFields
+        let hasInput = Prelude.List.null Text inputFields == False
         let inputParam = if hasInput then ", params ${functionName}Params" else ""
         let queryArgs = if hasInput then ", " ++ Prelude.Text.concatSep ", " (Prelude.List.map Text Text (\(f : Text) -> "params.${f}") inputFields) else ""
 
@@ -53,7 +53,7 @@ func (q *Queries) ${functionName}(ctx context.Context${inputParam}) (${functionN
 -- Generate function for Multiple cardinality (returns slice)
 let generateMultipleFunction : Text -> Text -> List Text -> List Text -> Text
     = \(functionName : Text) -> \(sql : Text) -> \(inputFields : List Text) -> \(outputFields : List Text) ->
-        let hasInput = !Prelude.List.null Text inputFields
+        let hasInput = Prelude.List.null Text inputFields == False
         let inputParam = if hasInput then ", params ${functionName}Params" else ""
         let queryArgs = if hasInput then ", " ++ Prelude.Text.concatSep ", " (Prelude.List.map Text Text (\(f : Text) -> "params.${f}") inputFields) else ""
 
