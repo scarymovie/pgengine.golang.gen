@@ -1,28 +1,32 @@
 -- Main compilation logic that ties everything together
+-- Processes Project from gen-sdk and generates Go code
 
-let Prelude = https://prelude.dhall-lang.org/v21.1.0/package.dhall
+let Deps = ./Deps/package.dhall
+
+let Sdk = Deps.Sdk
+
+let Project = Deps.Project
 
 let Config = ./Config.dhall
 
--- Placeholder compile function
--- This will be implemented to process the gen-sdk Project type
--- and generate Go code files
-let compile
-    : Config.Type -> Text
-    = \(config : Config.Type) ->
-        ''
-        -- Compilation logic will be implemented here
-        -- This function receives the parsed SQL project from gen-sdk
-        -- and generates Go code based on the configuration
+let ProjectInterpreter = ./Interpreters/Project.dhall
 
-        -- Steps:
-        -- 1. Process custom types (enums, composites)
-        -- 2. Process statements (queries)
-        -- 3. Generate Input/Output structs
-        -- 4. Generate query functions
-        -- 5. Generate go.mod
-        -- 6. Optionally generate client wrapper
-        -- 7. Optionally generate tests
-        ''
+in  \(config : Optional Config.Type) ->
+    \(project : Project.Project) ->
+      let interpreterConfig =
+            { rootModuleName = Deps.CodegenKit.Name.toTextInSnake project.name
+            , packageName =
+                merge
+                  { None = None Text
+                  , Some = \(c : Config.Type) -> c.packageName
+                  }
+                  config
+            , generateTests =
+                merge
+                  { None = False
+                  , Some = \(c : Config.Type) -> c.generateTests
+                  }
+                  config
+            }
 
-in compile
+      in  ProjectInterpreter.run interpreterConfig project

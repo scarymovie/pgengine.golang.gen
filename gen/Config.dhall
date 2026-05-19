@@ -2,12 +2,8 @@
 -- MVP: pgx-only, SQL-first, minimal abstractions
 
 { Type =
-    { -- Custom package name for generated code
-      -- Default: None (derived from project name)
-      packageName : Optional Text
-    , -- Generate test files for queries
-      -- Default: False
-      generateTests : Bool
+    { packageName : Optional Text
+    , generateTests : Bool
     }
 , default =
     { packageName = None Text
