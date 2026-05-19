@@ -13,10 +13,18 @@ This is a Go code generator for the pGenie ecosystem. The generator creates type
 The generator is written in Dhall and follows the pGenie gen-sdk contract:
 
 - **gen/Gen.dhall** - Main entry point implementing the Sdk.module interface
-- **gen/Config.dhall** - Configuration schema for generator options
+- **gen/Config.dhall** - Configuration schema (Type + default)
 - **gen/compile.dhall** - Core compilation logic
+- **gen/Deps/** - External dependencies
+  - Sdk.dhall - gen-sdk v1.0 (f45f4eca)
+  - Project.dhall - Project types from gen-sdk
+  - Prelude.dhall - Dhall Prelude v23.1.0
+  - Lude.dhall - Utility library v1.0.0
+  - CodegenKit.dhall - Name conversion utilities v0.3.0
+- **gen/Interpreters/** - Code generation logic
+  - Project.dhall - Main interpreter (Project → List Sdk.File)
+  - Query.dhall - Query processor (Query → Go methods)
 - **gen/types/** - PostgreSQL to Go type mapping logic
-- **gen/statements/** - SQL statement to Go function generation
 - **gen/templates/** - Dhall templates for generating Go code
 
 ### Generated Code Structure
@@ -89,19 +97,23 @@ generated/
 
 ## Development Commands
 
-### Dhall Commands
+### Dhall Commands via Docker
 ```bash
-# Validate Dhall syntax
-dhall --file gen/Gen.dhall
+# Helper script (recommended)
+./dhall.sh type gen/Gen.dhall
+./dhall.sh validate-all
 
-# Type check
-dhall type --file gen/Gen.dhall
+# Direct Docker commands
+docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
+  dhall type --file gen/Gen.dhall
 
 # Format Dhall files
-dhall format --inplace gen/**/*.dhall
+docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
+  dhall format --inplace gen/**/*.dhall
 
 # Freeze imports (pin versions)
-dhall freeze --inplace gen/Gen.dhall
+docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
+  dhall freeze --inplace gen/Gen.dhall
 ```
 
 ### Testing
@@ -115,9 +127,11 @@ diff -r tests/expected/ tests/output/
 
 ## Key Dependencies
 
-### Dhall Dependencies
-- **gen-sdk**: https://github.com/pgenie-io/gen-sdk - Core SDK with contract and API
-- **Prelude**: https://prelude.dhall-lang.org/v21.1.0/package.dhall - Standard library
+### Dhall Dependencies (gen/Deps/)
+- **gen-sdk f45f4eca**: https://github.com/pgenie-io/gen-sdk - Core SDK with contract and API
+- **Prelude v23.1.0**: Standard Dhall library
+- **Lude v1.0.0**: Utility library for gen-sdk
+- **CodegenKit v0.3.0**: Name conversion utilities (toTextInSnake, toTextInPascal, etc.)
 
 ### Generated Code Dependencies
 - `github.com/jackc/pgx/v5` - PostgreSQL driver (core only, no pool/transaction manager)
@@ -139,11 +153,24 @@ The generator supports these configuration options in Config.dhall:
 
 ## Implementation Phases
 
-1. **Type Mapping** - PostgreSQL to Go type conversion using pgtype
-2. **Querier Interface** - Generate interface with query methods
-3. **Query Implementation** - Implement methods using `CollectRows`/`CollectOneRow`
-4. **Cardinality Handling** - Optional/Single/Multiple result patterns
-5. **Testing** - Fixtures, integration tests, compilation verification
+### Current Status: Phase 1 (WIP)
+
+1. **✅ MVP Structure** - Project setup, documentation, examples
+2. **🚧 gen-sdk Integration** - Deps/, Interpreters/ structure created
+   - ❌ Sdk.module type mismatch (needs fixing)
+   - ⏳ Project.dhall interpreter (placeholder)
+   - ⏳ Query.dhall processor (placeholder)
+3. **⏳ Type Mapping** - PostgreSQL to Go type conversion using pgtype
+4. **⏳ Querier Interface** - Generate interface with query methods
+5. **⏳ Query Implementation** - Implement methods using `CollectRows`/`CollectOneRow`
+6. **⏳ Cardinality Handling** - Optional/Single/Multiple result patterns
+7. **⏳ Testing** - Fixtures, integration tests, compilation verification
+
+### Next Steps
+1. Fix Sdk.module integration (understand expected return type)
+2. Implement Project.dhall interpreter (process queries and custom types)
+3. Create test fixtures (tests/Demo.dhall)
+4. Generate first working Go code
 
 ## Generated Code Patterns
 
