@@ -1,0 +1,22 @@
+# IDE
+.idea
+.vscode
+
+# Build artifacts
+*.o
+*.a
+*.so
+
+# Test binaries
+*.test
+*.out
+
+# Go workspace file
+go.work
+
+# Generated code (for testing)
+tests/output/
+
+# OS files
+.DS_Store
+Thumbs.db
