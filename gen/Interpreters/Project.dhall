@@ -3,25 +3,23 @@
 
 let Deps = ../Deps/package.dhall
 
+let Algebra = ../Algebras/Interpreter.dhall
+
 let Sdk = Deps.Sdk
 
 let Project = Deps.Project
-
-let Config =
-      { rootModuleName : Text
-      , packageName : Optional Text
-      , generateTests : Bool
-      }
 
 let Input = Project.Project
 
 let Output = List Sdk.File.Type
 
 let run =
-      \(config : Config) ->
+      \(config : Algebra.Config) ->
       \(input : Input) ->
         -- TODO: Process queries and custom types
-        -- For now, return empty list
-        [] : List Sdk.File.Type
+        -- For now, return empty list wrapped in Compiled
+        Sdk.Compiled.applicative.pure
+          (List Sdk.File.Type)
+          ([] : List Sdk.File.Type)
 
-in  { Config, Input, Output, run }
+in  Algebra.module Input Output run
