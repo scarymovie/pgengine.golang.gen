@@ -7,7 +7,7 @@ Go code generator for [pGenie](https://github.com/pgenie-io/pgenie) - generates 
 - **pgx-only**: Uses `github.com/jackc/pgx/v5` - the best PostgreSQL driver for Go
 - **SQL-first**: Write SQL, get type-safe Go code - no ORM, no query builders
 - **Minimal abstractions**: Simple `Querier` interface with clean API
-- **Type-safe**: Full PostgreSQL type support via `pgtype`
+- **Native types**: Public API uses plain Go types and pointers — no third-party deps in signatures
 - **Transaction support**: Works with both `pgx.Conn` and `pgx.Tx` via `DBTX` interface
 
 ## Installation
@@ -166,24 +166,28 @@ DELETE FROM users WHERE id = $1;
 
 ## Type Mapping
 
-| PostgreSQL Type | Go Type | Nullable Go Type |
-|----------------|---------|------------------|
-| `bool` | `bool` | `pgtype.Bool` |
-| `int2`, `smallint` | `int16` | `pgtype.Int2` |
-| `int4`, `integer` | `int32` | `pgtype.Int4` |
-| `int8`, `bigint` | `int64` | `pgtype.Int8` |
-| `float4`, `real` | `float32` | `pgtype.Float4` |
-| `float8`, `double precision` | `float64` | `pgtype.Float8` |
-| `text`, `varchar` | `string` | `pgtype.Text` |
+The public API uses **only native Go types** — nullable columns become pointers,
+and there are no third-party dependencies in generated signatures.
+
+| PostgreSQL Type | NOT NULL | Nullable |
+|----------------|----------|----------|
+| `bool` | `bool` | `*bool` |
+| `int2`, `smallint` | `int16` | `*int16` |
+| `int4`, `integer` | `int32` | `*int32` |
+| `int8`, `bigint` | `int64` | `*int64` |
+| `float4`, `real` | `float32` | `*float32` |
+| `float8`, `double precision` | `float64` | `*float64` |
+| `text`, `varchar` | `string` | `*string` |
+| `oid` | `uint32` | `*uint32` |
+| `date`, `time`, `timestamp`, `timestamptz` | `time.Time` | `*time.Time` |
 | `bytea` | `[]byte` | `[]byte` |
-| `uuid` | `pgtype.UUID` | `pgtype.UUID` |
-| `timestamp`, `timestamptz` | `time.Time` | `pgtype.Timestamp` |
-| `date` | `pgtype.Date` | `pgtype.Date` |
 | `json`, `jsonb` | `[]byte` | `[]byte` |
-| `numeric`, `decimal` | `pgtype.Numeric` | `pgtype.Numeric` |
-| `inet` | `netip.Addr` | `pgtype.Inet` |
-| `cidr` | `netip.Prefix` | `pgtype.Cidr` |
-| Arrays | `[]T` | `[]T` |
+| `uuid`, `numeric`, `inet`, `cidr`, `interval` | `string` | `*string` |
+
+Types with no native Go equivalent (`uuid`, `numeric`, `inet`, ...) are exposed
+as a canonical `string`: scanned into a `pgtype.*` field internally and converted,
+so `pgtype` never leaks into a public signature. Other PostgreSQL types are
+currently unsupported and produce a generation error.
 
 ## Configuration
 
@@ -212,7 +216,7 @@ generated/
 
 - **Best PostgreSQL driver**: Native support for PostgreSQL features
 - **Better performance**: No `database/sql` overhead
-- **Rich types**: `pgtype` package for all PostgreSQL types
+- **Rich types**: `pgtype` handles all PostgreSQL types internally (kept out of the public API)
 - **Modern API**: Context support, better error handling
 - **Active development**: Regular updates and improvements
 
@@ -225,7 +229,7 @@ This generator is inspired by [sqlc](https://sqlc.dev/) but focuses exclusively 
 | PostgreSQL support | ✅ pgx-only | ✅ Multiple drivers |
 | MySQL support | ❌ | ✅ |
 | SQLite support | ❌ | ✅ |
-| Type safety | ✅ pgtype | ✅ sql.Null* |
+| Type safety | ✅ native types + pointers | ✅ sql.Null* |
 | Query validation | ✅ pGenie | ✅ Built-in |
 | Code generation | ✅ Dhall | ✅ Go |
 

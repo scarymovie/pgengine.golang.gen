@@ -5,7 +5,7 @@ let Deps = ../Deps/package.dhall
 
 let Config =
       { rootModuleName : Text
-      , packageName : Optional Text
+      , packageName : Text
       , generateTests : Bool
       }
 

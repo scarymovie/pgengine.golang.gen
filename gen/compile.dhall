@@ -17,8 +17,15 @@ in  \(config : Optional Config.Type) ->
             { rootModuleName = Deps.CodegenKit.Name.toTextInSnake project.name
             , packageName =
                 merge
-                  { None = None Text
-                  , Some = \(c : Config.Type) -> c.packageName
+                  { None =
+                      Deps.CodegenKit.Name.toTextInSnake project.name
+                  , Some = \(c : Config.Type) ->
+                      merge
+                        { None =
+                            Deps.CodegenKit.Name.toTextInSnake project.name
+                        , Some = \(pkg : Text) -> pkg
+                        }
+                        c.packageName
                   }
                   config
             , generateTests =

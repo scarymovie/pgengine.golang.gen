@@ -4,14 +4,12 @@ package db
 
 import (
 	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type User struct {
-	ID        int64            `db:"id"`
-	Name      string           `db:"name"`
-	Email     string           `db:"email"`
-	Bio       pgtype.Text      `db:"bio"`
-	CreatedAt time.Time        `db:"created_at"`
+	ID        int64     `db:"id"`
+	Name      string    `db:"name"`
+	Email     string    `db:"email"`
+	Bio       *string   `db:"bio"`        // nullable text -> *string
+	CreatedAt time.Time `db:"created_at"` // NOT NULL timestamptz
 }

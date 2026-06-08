@@ -1,0 +1,136 @@
+-- Maps Sdk.Project.Primitive to Go types.
+--
+-- Public API exposes only native Go types (no third-party deps):
+--   * NOT NULL  -> native type        (string, int64, time.Time, ...)
+--   * nullable  -> pointer            (*string, *int64, *time.Time, ...)
+--     (slices like []byte are already nilable, so nullable == notNull)
+--
+-- Types without a natural Go equivalent (uuid, numeric, inet, ...) are
+-- exposed as `string`. They are scanned via a pgtype.* field internally and
+-- converted; pgtype never appears in the public signature. Marked viaString.
+--
+-- Unsupported types report a compile error via the caller (supported = False).
+
+let Deps = ../Deps/package.dhall
+
+let Input = Deps.Sdk.Project.Primitive
+
+let Output =
+      { notNull : Text
+      , nullable : Text
+      , needsTime : Bool
+      , viaString : Bool
+      , supported : Bool
+      }
+
+-- Native Go type: nullable becomes a pointer.
+let native =
+      \(t : Text) ->
+        { notNull = t
+        , nullable = "*${t}"
+        , needsTime = False
+        , viaString = False
+        , supported = True
+        }
+
+-- Native time.Time type.
+let timeType =
+      { notNull = "time.Time"
+      , nullable = "*time.Time"
+      , needsTime = True
+      , viaString = False
+      , supported = True
+      }
+
+-- Slice type ([]byte): already nilable, no pointer for nullable.
+let slice =
+      \(t : Text) ->
+        { notNull = t
+        , nullable = t
+        , needsTime = False
+        , viaString = False
+        , supported = True
+        }
+
+-- Exotic type with no native Go equivalent: exposed as string,
+-- scanned via pgtype internally.
+let viaStr =
+      { notNull = "string"
+      , nullable = "*string"
+      , needsTime = False
+      , viaString = True
+      , supported = True
+      }
+
+let unsupported =
+      \(name : Text) ->
+        { notNull = "", nullable = "", needsTime = False, viaString = False, supported = False }
+
+let run =
+      \(input : Input) ->
+        merge
+          { Bit             = unsupported "bit"
+          , Bool            = native "bool"
+          , Box             = unsupported "box"
+          , Box2D           = unsupported "box2d"
+          , Box3D           = unsupported "box3d"
+          , Bpchar          = native "string"
+          , Bytea           = slice "[]byte"
+          , Char            = unsupported "char"
+          , Cidr            = viaStr
+          , Circle          = unsupported "circle"
+          , Citext          = native "string"
+          , Date            = timeType
+          , Datemultirange  = unsupported "datemultirange"
+          , Daterange       = unsupported "daterange"
+          , Float4          = native "float32"
+          , Float8          = native "float64"
+          , Geography       = unsupported "geography"
+          , Geometry        = unsupported "geometry"
+          , Hstore          = unsupported "hstore"
+          , Inet            = viaStr
+          , Int2            = native "int16"
+          , Int4            = native "int32"
+          , Int4multirange  = unsupported "int4multirange"
+          , Int4range       = unsupported "int4range"
+          , Int8            = native "int64"
+          , Int8multirange  = unsupported "int8multirange"
+          , Int8range       = unsupported "int8range"
+          , Interval        = viaStr
+          , Json            = slice "[]byte"
+          , Jsonb           = slice "[]byte"
+          , Line            = unsupported "line"
+          , Lseg            = unsupported "lseg"
+          , Ltree           = unsupported "ltree"
+          , Macaddr         = viaStr
+          , Macaddr8        = viaStr
+          , Money           = unsupported "money"
+          , Name            = native "string"
+          , Numeric         = viaStr
+          , Nummultirange   = unsupported "nummultirange"
+          , Numrange        = unsupported "numrange"
+          , Oid             = native "uint32"
+          , Path            = unsupported "path"
+          , PgLsn           = unsupported "pg_lsn"
+          , PgSnapshot      = unsupported "pg_snapshot"
+          , Point           = unsupported "point"
+          , Polygon         = unsupported "polygon"
+          , Text            = native "string"
+          , Time            = timeType
+          , Timestamp       = timeType
+          , Timestamptz     = timeType
+          , Timetz          = viaStr
+          , Tsmultirange    = unsupported "tsmultirange"
+          , Tsquery         = unsupported "tsquery"
+          , Tsrange         = unsupported "tsrange"
+          , Tstzmultirange  = unsupported "tstzmultirange"
+          , Tstzrange       = unsupported "tstzrange"
+          , Tsvector        = unsupported "tsvector"
+          , Uuid            = viaStr
+          , Varbit          = unsupported "varbit"
+          , Varchar         = native "string"
+          , Xml             = unsupported "xml"
+          }
+          input
+
+in  { Input, Output, run }

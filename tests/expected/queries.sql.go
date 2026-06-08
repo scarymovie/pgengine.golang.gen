@@ -57,7 +57,7 @@ RETURNING id, name, email, bio, created_at
 type CreateUserParams struct {
 	Name  string
 	Email string
-	Bio   pgtype.Text
+	Bio   *string // nullable text -> *string (nil => NULL)
 }
 
 func (q *Queries) CreateUser(ctx context.Context, params CreateUserParams) (User, error) {

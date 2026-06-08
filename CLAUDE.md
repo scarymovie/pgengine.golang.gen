@@ -4,194 +4,120 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Go code generator for the pGenie ecosystem. The generator creates type-safe Go code for working with PostgreSQL based on SQL queries. It's part of the pgenie-io family of generators (similar to rust.gen, java.gen, haskell.gen).
+A Go code generator for the pGenie ecosystem. It produces type-safe Go code for
+working with PostgreSQL from SQL queries, alongside the other generators
+(rust.gen, java.gen, haskell.gen). The generator itself is written in Dhall and
+follows the gen-sdk contract.
 
 ## Architecture
 
-### Generator Structure
+The generator is written in Dhall:
 
-The generator is written in Dhall and follows the pGenie gen-sdk contract:
+- **gen/Gen.dhall** — entry point, implements `Sdk.module`.
+- **gen/Config.dhall** — configuration schema (`Type` + `default`).
+- **gen/compile.dhall** — builds the interpreter config and runs the Project interpreter.
+- **gen/Algebras/Interpreter.dhall** — wraps an interpreter `run` into the
+  `Sdk.Compiled.Type` the SDK expects (`{ Input, Output, Result, Run, run }`).
+- **gen/Deps/** — pinned dependencies (`package.dhall` re-exports them):
+  - `Sdk.dhall` — gen-sdk `f45f4eca`
+  - `Prelude.dhall` — v23.1.0
+  - `Lude.dhall` — v1.0.0
+  - `CodegenKit.dhall` — v0.3.0 (name conversion: `Name.toTextInPascal/Snake/...`)
+- **gen/Interpreters/**
+  - `Project.dhall` — `Project → List Sdk.File` (emits `go.mod`, `db.go`, queries).
+  - `Query.dhall` — one `Query → Go file` (SQL const, Params struct, Row struct, method).
+  - `Primitive.dhall` — the PostgreSQL→Go type table.
 
-- **gen/Gen.dhall** - Main entry point implementing the Sdk.module interface
-- **gen/Config.dhall** - Configuration schema (Type + default)
-- **gen/compile.dhall** - Core compilation logic
-- **gen/Deps/** - External dependencies
-  - Sdk.dhall - gen-sdk v1.0 (f45f4eca)
-  - Project.dhall - Project types from gen-sdk
-  - Prelude.dhall - Dhall Prelude v23.1.0
-  - Lude.dhall - Utility library v1.0.0
-  - CodegenKit.dhall - Name conversion utilities v0.3.0
-- **gen/Interpreters/** - Code generation logic
-  - Project.dhall - Main interpreter (Project → List Sdk.File)
-  - Query.dhall - Query processor (Query → Go methods)
-- **gen/types/** - PostgreSQL to Go type mapping logic
-- **gen/templates/** - Dhall templates for generating Go code
+The reference for the desired output is **tests/expected/** (golden files). The
+generator output is diffed against it.
 
-### Generated Code Structure
+### gen-sdk model notes
 
-The generator produces Go code with this structure:
+- `Sdk.Project.Name` is a structure of characters, NOT a string. Convert with
+  `Deps.CodegenKit.Name.toTextInPascal name` / `toTextInSnake name`.
+- `Sdk.Project.Query.result : Optional ResultRows` (merge `None`/`Some`).
+- `ResultRows.cardinality : < Optional | Single | Multiple >`,
+  `ResultRows.columns : NonEmpty Member`.
+- `Member = { isNullable : Bool, name : Name, pgName : Text, value : { scalar, arraySettings } }`.
+- `Scalar = < Primitive : Primitive | Custom : Name >`.
+- An interpreter `run` must return `Sdk.Compiled.Type Output`; wrap plain values
+  with `Sdk.Compiled.applicative.pure`.
+
+## Generated Code Structure
+
+Flat package (matches tests/expected/):
 
 ```
 generated/
 ├── go.mod
-├── types/          # Custom types (enums, composites)
-├── statements/     # Query functions
-└── client.go       # Optional client wrapper
+├── db.go            # DBTX interface, Queries struct, New(), WithTx()
+├── models.go        # custom types (enums, composites) — Phase 2
+└── queries.sql.go   # per-query: SQL const, Params/Row structs, method
 ```
 
 ## Type Mapping
 
-### PostgreSQL to Go Type Mapping
+Public API (params and results) exposes **only native Go types** — no third-party
+dependencies (no `google/uuid`, etc.).
 
-- **Primitives**: `int4` → `int32`, `int8` → `int64`, `text` → `string`, `bool` → `bool`
-- **Nullable fields**: Use `pgtype` types (`pgtype.Text`, `pgtype.Int8`, `pgtype.Timestamp`, etc.)
-- **UUID**: `pgtype.UUID` from `github.com/jackc/pgx/v5/pgtype`
-- **Timestamps**: `pgtype.Timestamp` for nullable, `time.Time` for NOT NULL
-- **JSON/JSONB**: `[]byte` or custom types with pgx codec
-- **Arrays**: `[]T` where T is the element type
-- **Enums**: Generated as Go string types with constants
-- **Composites**: Generated as Go structs with pgx codec registration
+- **NOT NULL** → native type (`string`, `int64`, `time.Time`, ...).
+- **Nullable** → pointer (`*string`, `*int64`, `*time.Time`, ...). Slices like
+  `[]byte` are already nilable, so nullable == NOT NULL.
 
-### Result Cardinality
+`pgtype.*` may appear **only inside generated code** as an internal scan target;
+it never appears in a public signature.
 
-- **Optional**: Returns `*Output, error` (can be nil without error)
-- **Single**: Returns `*Output, error` (nil only on error, ErrNotFound if no rows)
-- **Multiple**: Returns `[]Output, error` (empty slice if no rows)
+| PostgreSQL | NOT NULL | Nullable | Notes |
+|------------|----------|----------|-------|
+| `bool` | `bool` | `*bool` | |
+| `int2/int4/int8` | `int16/int32/int64` | `*int16/...` | |
+| `float4/float8` | `float32/float64` | `*float32/...` | |
+| `text/varchar/bpchar/citext/name` | `string` | `*string` | |
+| `oid` | `uint32` | `*uint32` | |
+| `date/time/timestamp/timestamptz` | `time.Time` | `*time.Time` | needs `time` import |
+| `bytea` | `[]byte` | `[]byte` | |
+| `json/jsonb` | `[]byte` | `[]byte` | |
+| `uuid/numeric/inet/cidr/interval/macaddr/timetz` | `string` | `*string` | **viaString**: scanned via `pgtype.*` internally, exposed as `string` |
+| everything else | — | — | unsupported → compile error |
 
-## Design Decisions - MVP Strategy
+**viaString rationale:** Go has no stdlib type for `uuid`/`numeric`/etc. Other
+generators pull libraries (Java `UUID`/`BigDecimal`, Rust `uuid`/`rust_decimal`,
+Haskell `UUID`/`Scientific`). To keep the public API dependency-free we expose a
+canonical `string` and convert from the internal `pgtype.*` scan field.
 
-### Database Library
-- **pgx-only**: Only `github.com/jackc/pgx/v5` - no database/sql, no ORM
-- Best PostgreSQL driver with native support for arrays, jsonb, copy, ranges
-- Direct pgx types, no compatibility layers
+`Primitive.dhall` returns `{ notNull, nullable, needsTime, viaString, supported }`
+for each type. Unsupported types (`supported = False`) should make the generator
+report an error.
 
-### API Style - Minimal Abstractions
-- **Querier interface** - simple, clean API
-- Methods accept `ctx` and typed params, return typed results
-- No repository pattern, no transaction manager abstractions
-- Example:
-  ```go
-  type Querier interface {
-      GetUser(ctx context.Context, params GetUserParams) (User, error)
-      ListUsers(ctx context.Context) ([]User, error)
-  }
-  ```
+## Result Cardinality
 
-### SQL-First Approach
-- Generate query methods directly from SQL
-- No ORM, no query builders
-- Just: queries → params → rows → scanners
+- **Single** → `(Row, error)`; `pgx.CollectOneRow(rows, pgx.RowToStructByName[Row])`.
+- **Optional** → `(*Row, error)`; `CollectOneRow`, return `nil, nil` on `pgx.ErrNoRows`.
+- **Multiple** → `([]Row, error)`; `pgx.CollectRows(rows, pgx.RowToStructByName[Row])`.
+- **No result rows** (`result = None`) → `error`; `q.db.Exec(...)`.
 
-### Nullable Fields
-- Use `pgtype` types (`pgtype.Text`, `pgtype.Int8`, etc.) - native pgx support
-- No pointers, no `sql.Null*` types
+## Design Decisions — MVP
 
-### Row Mapping
-- Use `pgx.CollectRows` with `pgx.RowToStructByName[T]` for multiple rows
-- Use `pgx.CollectOneRow` with `pgx.RowToStructByName[T]` for single row
-- Structs use `db:"column_name"` tags for mapping
-
-### Error Handling
-- Return errors directly from pgx
-- `pgx.ErrNoRows` for not found cases
-
-## Development Commands
-
-### Dhall Commands via Docker
-```bash
-# Helper script (recommended)
-./dhall.sh type gen/Gen.dhall
-./dhall.sh validate-all
-
-# Direct Docker commands
-docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
-  dhall type --file gen/Gen.dhall
-
-# Format Dhall files
-docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
-  dhall format --inplace gen/**/*.dhall
-
-# Freeze imports (pin versions)
-docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
-  dhall freeze --inplace gen/Gen.dhall
-```
-
-### Testing
-```bash
-# Run generator tests
-dhall --file tests/Demo.dhall
-
-# Compare generated output with expected
-diff -r tests/expected/ tests/output/
-```
-
-## Key Dependencies
-
-### Dhall Dependencies (gen/Deps/)
-- **gen-sdk f45f4eca**: https://github.com/pgenie-io/gen-sdk - Core SDK with contract and API
-- **Prelude v23.1.0**: Standard Dhall library
-- **Lude v1.0.0**: Utility library for gen-sdk
-- **CodegenKit v0.3.0**: Name conversion utilities (toTextInSnake, toTextInPascal, etc.)
-
-### Generated Code Dependencies
-- `github.com/jackc/pgx/v5` - PostgreSQL driver (core only, no pool/transaction manager)
-- `github.com/jackc/pgx/v5/pgtype` - PostgreSQL types (for nullable fields)
-
-## Reference Implementations
-
-Study these existing generators for patterns and conventions:
-- **rust.gen**: https://github.com/pgenie-io/rust.gen
-- **java.gen**: https://github.com/pgenie-io/java.gen
-- **haskell.gen**: https://github.com/pgenie-io/haskell.gen
-
-## Configuration Options
-
-The generator supports these configuration options in Config.dhall:
-
-- `packageName`: Custom package name for generated code (default: derived from project)
-- `generateTests`: Generate test files for queries (default: false)
-
-## Implementation Phases
-
-### Current Status: Phase 1 (WIP)
-
-1. **✅ MVP Structure** - Project setup, documentation, examples
-2. **🚧 gen-sdk Integration** - Deps/, Interpreters/ structure created
-   - ❌ Sdk.module type mismatch (needs fixing)
-   - ⏳ Project.dhall interpreter (placeholder)
-   - ⏳ Query.dhall processor (placeholder)
-3. **⏳ Type Mapping** - PostgreSQL to Go type conversion using pgtype
-4. **⏳ Querier Interface** - Generate interface with query methods
-5. **⏳ Query Implementation** - Implement methods using `CollectRows`/`CollectOneRow`
-6. **⏳ Cardinality Handling** - Optional/Single/Multiple result patterns
-7. **⏳ Testing** - Fixtures, integration tests, compilation verification
-
-### Next Steps
-1. Fix Sdk.module integration (understand expected return type)
-2. Implement Project.dhall interpreter (process queries and custom types)
-3. Create test fixtures (tests/Demo.dhall)
-4. Generate first working Go code
+- **pgx-only**: `github.com/jackc/pgx/v5` (+ `pgtype`, `pgconn`). No database/sql, no ORM.
+- **SQL-first**: queries → params → rows → scanners. No query builder.
+- **Minimal abstractions**: `Queries` struct over a `DBTX` interface; no repository pattern.
+- **Native public types**: see Type Mapping above.
+- **Row mapping**: `pgx.RowToStructByName[T]` with `db:"column_name"` tags.
+- **Go 1.26** in generated `go.mod`; pgx `v5.9.2`.
 
 ## Generated Code Patterns
 
-### Querier Interface
 ```go
-type Querier interface {
-    GetUser(ctx context.Context, params GetUserParams) (User, error)
-    ListUsers(ctx context.Context) ([]User, error)
-    CreateUser(ctx context.Context, params CreateUserParams) (User, error)
-}
-```
-
-### Implementation
-```go
-type Queries struct {
-    db DBTX
+type DBTX interface {
+    Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+    QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+    Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-func New(db DBTX) *Queries {
-    return &Queries{db: db}
-}
+type Queries struct{ db DBTX }
+func New(db DBTX) *Queries { return &Queries{db: db} }
+
+type GetUserParams struct{ ID int64 }
 
 func (q *Queries) GetUser(ctx context.Context, params GetUserParams) (User, error) {
     rows, err := q.db.Query(ctx, getUserSQL, params.ID)
@@ -202,22 +128,54 @@ func (q *Queries) GetUser(ctx context.Context, params GetUserParams) (User, erro
 }
 ```
 
-### DBTX Interface
-```go
-type DBTX interface {
-    Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
-    QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-    Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
-}
+## Development Commands
+
+```bash
+# Type-check (Docker; no local dhall needed)
+docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
+  dhall type --file gen/Gen.dhall
+
+# Format
+docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
+  dhall format --inplace gen/Gen.dhall
+
+# Generate the demo (gen-sdk music_catalogue fixture) into a directory tree
+docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
+  dhall to-directory-tree --file tests/Demo.dhall --output tests/output --allow-path-separators
+# Inspect tests/output/queries.sql.go (different schema than tests/expected/, so no byte diff)
 ```
 
-### Struct with pgtype
-```go
-type User struct {
-    ID        int64            `db:"id"`
-    Name      string           `db:"name"`
-    Email     string           `db:"email"`
-    Bio       pgtype.Text      `db:"bio"`        // nullable
-    DeletedAt pgtype.Timestamp `db:"deleted_at"` // nullable
-}
-```
+## Status
+
+Generator works end-to-end. `gen/Gen.dhall` type-checks; running the demo against
+the gen-sdk fixture produces `go.mod`, `db.go`, `queries.sql.go` for all
+cardinalities (Single/Optional/Multiple/exec), with nullable→pointer mapping and
+computed imports.
+
+- ✅ gen-sdk integration; `gen/Gen.dhall` type-checks.
+- ✅ Type table (`Primitive.dhall`) — native-only public mapping.
+- ✅ `Query.dhall` rendering (SQL const, Params/Row structs, method, import flags).
+- ✅ `Project.dhall` assembling `go.mod` + `db.go` + single `queries.sql.go`.
+
+Phase 2 (not done — see the plan for details):
+
+- ⏳ Unsupported types (`supported = False`, e.g. `ltree`) should report a
+  generation error; currently emit an empty Go type.
+- ⏳ Arrays — `value.arraySettings` ignored; `unnest($1::text[])` params come out
+  as `string` instead of `[]string`.
+- ⏳ Custom types (enums, composites) → `models.go`; currently referenced
+  (`AlbumFormat`, ...) but undefined.
+- ⏳ viaString conversion (uuid/numeric → string) — internal pgtype scan + convert.
+- ⏳ Cosmetics: gofmt alignment, blank lines between queries.
+
+**Note on `tests/expected/`:** it is a hand-written style reference on a simple
+`users` schema. The demo runs on the gen-sdk `music_catalogue` fixture (different
+schema), so `diff -r tests/expected/ tests/output/` will NOT match byte-for-byte —
+`expected/` documents the desired style, not a byte target for the demo.
+
+## Reference Implementations
+
+- rust.gen: https://github.com/pgenie-io/rust.gen
+- java.gen: https://github.com/pgenie-io/java.gen
+- haskell.gen: https://github.com/pgenie-io/haskell.gen
+- gen-sdk: https://github.com/pgenie-io/gen-sdk
