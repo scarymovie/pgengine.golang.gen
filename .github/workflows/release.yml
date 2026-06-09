@@ -107,15 +107,17 @@ jobs:
             exit 1
           fi
 
-          if grep -qE 'https://github.com/scarymovie/pgengine.golang.gen/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/resolved.dhall' README.md; then
-            sed -i -E 's|https://github.com/scarymovie/pgengine.golang.gen/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/resolved.dhall|https://github.com/scarymovie/pgengine.golang.gen/releases/download/v${{ inputs.version }}/resolved.dhall|g' README.md
-            needs_commit=true
-          fi
+          for doc in README.md docs/USAGE.ru.md; do
+            if grep -qE 'https://github.com/scarymovie/pgengine.golang.gen/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/resolved.dhall' "$doc"; then
+              sed -i -E 's|https://github.com/scarymovie/pgengine.golang.gen/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/resolved.dhall|https://github.com/scarymovie/pgengine.golang.gen/releases/download/v${{ inputs.version }}/resolved.dhall|g' "$doc"
+              needs_commit=true
+            fi
+          done
 
           if [[ "$needs_commit" == true ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add CHANGELOG.md README.md
+            git add CHANGELOG.md README.md docs/USAGE.ru.md
             git commit -m "Prepare v${{ inputs.version }} release"
             git push origin HEAD:"${{ github.ref }}"
           fi

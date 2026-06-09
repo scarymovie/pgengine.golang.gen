@@ -71,11 +71,11 @@ postgres: 18
 
 artifacts:
   # Простая форма — только генератор:
-  go: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.1.0/resolved.dhall
+  go: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.2.0/resolved.dhall
 
   # Либо с конфигом:
   # go:
-  #   gen: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.1.0/resolved.dhall
+  #   gen: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.2.0/resolved.dhall
   #   config:
   #     packageName: db      # имя Go-пакета (по умолчанию — name проекта)
   #     emitGoMod: true      # false → без go.mod, для вендоринга в свой модуль
