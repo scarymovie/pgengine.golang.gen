@@ -103,13 +103,13 @@ create table users (
 ```
 
 `queries/*.sql` — один параметризованный запрос на файл, параметры через
-`:имя`:
+`$имя`:
 
 ```sql
 -- queries/get_user.sql  →  func (q *Queries) GetUser(ctx, GetUserParams) (GetUserRow, error)
 select id, name, email, bio, created_at
 from users
-where id = :id
+where id = $id
 ```
 
 Кардинальность результата pgn выводит сам: уникальный ключ в `where` →

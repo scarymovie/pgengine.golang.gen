@@ -43,7 +43,7 @@ parameterized query per file in `queries/*.sql` (see
 -- queries/get_user.sql
 select id, name, email, bio, created_at
 from users
-where id = :id
+where id = $id
 ```
 
 ### 2. Generate Go code
