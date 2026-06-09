@@ -70,8 +70,8 @@ dependencies (no `google/uuid`, etc.).
   element → pointer element (`[]*string`); a nullable array is just the slice
   (already nilable).
 
-`pgtype.*` may appear **only inside generated code** as an internal scan target;
-it never appears in a public signature.
+Generated code does not use `pgtype` at all: viaString types are read and
+written in their canonical text form directly through pgx (see below).
 
 | PostgreSQL | NOT NULL | Nullable | Notes |
 |------------|----------|----------|-------|
@@ -83,13 +83,18 @@ it never appears in a public signature.
 | `date/time/timestamp/timestamptz` | `time.Time` | `*time.Time` | needs `time` import |
 | `bytea` | `[]byte` | `[]byte` | |
 | `json/jsonb` | `[]byte` | `[]byte` | |
-| `uuid/numeric/inet/cidr/interval/macaddr/timetz/ltree` | `string` | `*string` | **viaString**: scanned via `pgtype.*` internally, exposed as `string` |
+| `uuid/numeric/inet/cidr/interval/macaddr/timetz/ltree` | `string` | `*string` | **viaString**: canonical text form, scanned/encoded as `string` directly |
 | everything else | — | — | unsupported → compile error |
 
 **viaString rationale:** Go has no stdlib type for `uuid`/`numeric`/etc. Other
 generators pull libraries (Java `UUID`/`BigDecimal`, Rust `uuid`/`rust_decimal`,
 Haskell `UUID`/`Scientific`). To keep the public API dependency-free we expose a
-canonical `string` and convert from the internal `pgtype.*` scan field.
+canonical `string`. pgx v5 encodes string params and scans most of these types
+into `string` directly; the three whose **binary** codec cannot scan into
+string — `inet`, `cidr`, `interval` — are requested in **text format**: queries
+with such result columns pass a generated `forceTextFormats`
+(`pgx.QueryResultFormatsByOID`) option as the first `Query` argument. Verified
+empirically against pgx v5.9.2 + PostgreSQL 16 (scan, NULL, arrays, encode).
 
 **Go 1.27 stdlib `uuid` (planned):** golang/go#62026 is accepted (April 2026):
 stdlib gets a top-level `uuid` package with `type UUID [16]byte` (release not
@@ -185,7 +190,9 @@ Phase 2 (not done — see the plan for details):
   domain → type alias. Plus a `RegisterTypes(ctx, conn)` helper that
   `conn.LoadType`s every type (and its `_array` form) with a retry loop, so
   declaration order doesn't matter for composites referencing composites.
-- ⏳ viaString conversion (uuid/numeric → string) — internal pgtype scan + convert.
+- ✅ viaString — no conversion machinery needed: pgx scans/encodes `string`
+  directly; inet/cidr/interval result columns get `forceTextFormats`
+  (`needsTextFormat` in `Primitive.dhall`). E2E-verified against PostgreSQL 16.
 - ⏳ Cosmetics: gofmt alignment, blank lines between queries.
 
 **Note on `tests/expected/`:** it is a hand-written style reference on a simple

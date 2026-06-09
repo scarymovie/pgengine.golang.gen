@@ -9,7 +9,12 @@ let PrimMap = ./Primitive.dhall
 
 let toPascal = Deps.CodegenKit.Name.toTextInPascal
 
-let Info = { goType : Text, needsTime : Bool, err : Optional Text }
+let Info =
+      { goType : Text
+      , needsTime : Bool
+      , needsTextFormat : Bool
+      , err : Optional Text
+      }
 
 let scalarInfo =
       \(scalar : Sdk.Project.Scalar) ->
@@ -23,6 +28,7 @@ let scalarInfo =
                 , nullable = "*${toPascal name}"
                 , needsTime = False
                 , viaString = False
+                , needsTextFormat = False
                 , supported = True
                 , pgType = ""
                 }
@@ -55,6 +61,7 @@ let forValue
 
         in  { goType
             , needsTime = s.needsTime
+            , needsTextFormat = s.needsTextFormat
             , err =
                 if    s.supported
                 then  None Text

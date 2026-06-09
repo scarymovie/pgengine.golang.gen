@@ -14,7 +14,12 @@ let GoType = ./GoType.dhall
 let Input = Sdk.Project.Query
 
 let Output =
-      { body : Text, needsTime : Bool, needsErrors : Bool, needsPgx : Bool }
+      { body : Text
+      , needsTime : Bool
+      , needsErrors : Bool
+      , needsPgx : Bool
+      , needsTextFormats : Bool
+      }
 
 let toPascal = Deps.CodegenKit.Name.toTextInPascal
 
@@ -121,6 +126,16 @@ let run =
                 memberErrors "param" input.params
               # memberErrors "column" resultColumns
 
+        let needsTextFormats =
+              Prelude.List.any
+                Sdk.Project.Member
+                ( \(m : Sdk.Project.Member) ->
+                    (GoType.forMember m).needsTextFormat
+                )
+                resultColumns
+
+        let formatsArg = if needsTextFormats then ", forceTextFormats" else ""
+
         let resultPart =
               merge
                 { None =
@@ -163,7 +178,7 @@ let run =
                               { Single =
                                   ''
                                   func (q *Queries) ${name}(ctx context.Context${paramDecl}) (${name}Row, error) {
-                                  	rows, err := q.db.Query(ctx, ${sqlConst}${paramArgs})
+                                  	rows, err := q.db.Query(ctx, ${sqlConst}${formatsArg}${paramArgs})
                                   	if err != nil {
                                   		return ${name}Row{}, err
                                   	}
@@ -173,7 +188,7 @@ let run =
                               , Optional =
                                   ''
                                   func (q *Queries) ${name}(ctx context.Context${paramDecl}) (*${name}Row, error) {
-                                  	rows, err := q.db.Query(ctx, ${sqlConst}${paramArgs})
+                                  	rows, err := q.db.Query(ctx, ${sqlConst}${formatsArg}${paramArgs})
                                   	if err != nil {
                                   		return nil, err
                                   	}
@@ -190,7 +205,7 @@ let run =
                               , Multiple =
                                   ''
                                   func (q *Queries) ${name}(ctx context.Context${paramDecl}) ([]${name}Row, error) {
-                                  	rows, err := q.db.Query(ctx, ${sqlConst}${paramArgs})
+                                  	rows, err := q.db.Query(ctx, ${sqlConst}${formatsArg}${paramArgs})
                                   	if err != nil {
                                   		return nil, err
                                   	}
@@ -231,6 +246,7 @@ let run =
                     , needsTime = paramsNeedTime || resultPart.needsTime
                     , needsErrors = resultPart.needsErrors
                     , needsPgx = resultPart.needsPgx
+                    , needsTextFormats
                     }
             else  Sdk.Compiled.err
                     Output

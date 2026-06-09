@@ -1,7 +1,6 @@
 -- Unit tests for the Member/Value -> Go type mapping.
 -- Evaluate with: dhall --file tests/GoType.test.dhall
 -- (asserts fail the evaluation on mismatch)
-
 let Deps = ../gen/Deps/package.dhall
 
 let Sdk = Deps.Sdk
@@ -49,13 +48,26 @@ let unsupportedReportsErr =
         ===  Some "unsupported PostgreSQL type \"tsvector\""
 
 let supportedHasNoErr =
-        assert
-      : (GoType.forValue (value P.Text noArr) False).err === None Text
+      assert : (GoType.forValue (value P.Text noArr) False).err === None Text
 
 let ltreeIsViaString =
       assert : (GoType.forValue (value P.Ltree noArr) False).goType === "string"
 
 let dateNeedsTime =
       assert : (GoType.forValue (value P.Date noArr) False).needsTime === True
+
+let inetNeedsTextFormat =
+        assert
+      : (GoType.forValue (value P.Inet noArr) False).needsTextFormat === True
+
+let intervalArrayNeedsTextFormat =
+        assert
+      :     ( GoType.forValue (value P.Interval (dim 1 False)) False
+            ).needsTextFormat
+        ===  True
+
+let uuidScansDirectly =
+        assert
+      : (GoType.forValue (value P.Uuid noArr) False).needsTextFormat === False
 
 in  "ok"

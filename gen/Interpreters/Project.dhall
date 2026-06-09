@@ -173,6 +173,26 @@ let run =
 
                 let needsTime = any (\(q : QueryGen.Output) -> q.needsTime)
 
+                let needsTextFormats =
+                      any (\(q : QueryGen.Output) -> q.needsTextFormats)
+
+                let textFormatsVar =
+                      if    needsTextFormats
+                      then  ''
+
+                            // forceTextFormats requests the text format for types whose pgx
+                            // binary codecs cannot scan into string.
+                            var forceTextFormats = pgx.QueryResultFormatsByOID{
+                            	650:  pgx.TextFormatCode, // cidr
+                            	651:  pgx.TextFormatCode, // cidr[]
+                            	869:  pgx.TextFormatCode, // inet
+                            	1041: pgx.TextFormatCode, // inet[]
+                            	1186: pgx.TextFormatCode, // interval
+                            	1187: pgx.TextFormatCode, // interval[]
+                            }
+                            ''
+                      else  ""
+
                 let stdImports =
                         [ "\t\"context\"" ]
                       # ( if    needsErrors
@@ -210,7 +230,7 @@ let run =
                       import (
                       ${importBlock}
                       )
-
+                      ${textFormatsVar}
                       ${bodies}''
 
                 let moduleName =
