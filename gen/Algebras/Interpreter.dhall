@@ -7,6 +7,7 @@ let Config =
       , packageName : Text
       , generateTests : Bool
       , emitGoMod : Bool
+      , useGoogleUuid : Bool
       }
 
 let module =

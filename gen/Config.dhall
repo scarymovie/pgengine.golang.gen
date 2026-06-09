@@ -6,7 +6,12 @@
     { packageName : Optional Text
     , generateTests : Optional Bool
     , emitGoMod : Optional Bool
+    , useGoogleUuid : Optional Bool
     }
 , default =
-  { packageName = None Text, generateTests = None Bool, emitGoMod = None Bool }
+  { packageName = None Text
+  , generateTests = None Bool
+  , emitGoMod = None Bool
+  , useGoogleUuid = None Bool
+  }
 }

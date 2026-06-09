@@ -22,11 +22,13 @@ let Input = Sdk.Project.CustomType
 let Output =
       { body : Text
       , needsTime : Bool
+      , needsUuid : Bool
       , pgFullName : Text
       , pgArrayFullName : Text
       }
 
 let memberErrors =
+      \(g : Bool) ->
       \(members : List Sdk.Project.Member) ->
         Prelude.List.unpackOptionals
           Text
@@ -38,21 +40,32 @@ let memberErrors =
                     { None = None Text
                     , Some = \(e : Text) -> Some "field \"${m.pgName}\": ${e}"
                     }
-                    (GoType.forMember m).err
+                    (GoType.forMember g m).err
               )
               members
           )
 
 let anyNeedsTime =
+      \(g : Bool) ->
       \(members : List Sdk.Project.Member) ->
         Prelude.List.any
           Sdk.Project.Member
-          (\(m : Sdk.Project.Member) -> (GoType.forMember m).needsTime)
+          (\(m : Sdk.Project.Member) -> (GoType.forMember g m).needsTime)
+          members
+
+let anyNeedsUuid =
+      \(g : Bool) ->
+      \(members : List Sdk.Project.Member) ->
+        Prelude.List.any
+          Sdk.Project.Member
+          (\(m : Sdk.Project.Member) -> (GoType.forMember g m).needsUuid)
           members
 
 let run =
       \(config : Algebra.Config) ->
       \(input : Input) ->
+        let g = config.useGoogleUuid
+
         let typeName = input.name.inPascalCase
 
         let pgFullName = "${input.pgSchema}.${input.pgName}"
@@ -81,6 +94,7 @@ let run =
                               )
                               ''
                           , needsTime = False
+                          , needsUuid = False
                           , errors = [] : List Text
                           }
                 , Composite =
@@ -89,7 +103,7 @@ let run =
                             Prelude.Text.concatMapSep
                               "\n"
                               Sdk.Project.Member
-                              GoType.field
+                              (GoType.field g)
                               members
 
                       in  { body =
@@ -98,18 +112,20 @@ let run =
                               ${fields}
                               }
                               ''
-                          , needsTime = anyNeedsTime members
-                          , errors = memberErrors members
+                          , needsTime = anyNeedsTime g members
+                          , needsUuid = anyNeedsUuid g members
+                          , errors = memberErrors g members
                           }
                 , Domain =
                     \(value : Sdk.Project.Value) ->
-                      let info = GoType.forValue value False
+                      let info = GoType.forValue g value False
 
                       in  { body =
                               ''
                               type ${typeName} = ${info.goType}
                               ''
                           , needsTime = info.needsTime
+                          , needsUuid = info.needsUuid
                           , errors =
                               merge
                                 { None = [] : List Text
@@ -125,6 +141,7 @@ let run =
                     Output
                     { body = rendered.body
                     , needsTime = rendered.needsTime
+                    , needsUuid = rendered.needsUuid
                     , pgFullName
                     , pgArrayFullName
                     }

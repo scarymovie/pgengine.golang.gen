@@ -18,21 +18,30 @@ let Input = Sdk.Project.Query
 let Output =
       { body : Text
       , needsTime : Bool
+      , needsUuid : Bool
       , needsErrors : Bool
       , needsPgx : Bool
       , needsTextFormats : Bool
       }
 
-let memberField = GoType.field
-
 let anyNeedsTime =
+      \(g : Bool) ->
       \(members : List Sdk.Project.Member) ->
         Prelude.List.any
           Sdk.Project.Member
-          (\(m : Sdk.Project.Member) -> (GoType.forMember m).needsTime)
+          (\(m : Sdk.Project.Member) -> (GoType.forMember g m).needsTime)
+          members
+
+let anyNeedsUuid =
+      \(g : Bool) ->
+      \(members : List Sdk.Project.Member) ->
+        Prelude.List.any
+          Sdk.Project.Member
+          (\(m : Sdk.Project.Member) -> (GoType.forMember g m).needsUuid)
           members
 
 let memberErrors =
+      \(g : Bool) ->
       \(label : Text) ->
       \(members : List Sdk.Project.Member) ->
         Prelude.List.unpackOptionals
@@ -46,7 +55,7 @@ let memberErrors =
                     , Some =
                         \(e : Text) -> Some "${label} \"${m.pgName}\": ${e}"
                     }
-                    (GoType.forMember m).err
+                    (GoType.forMember g m).err
               )
               members
           )
@@ -77,6 +86,10 @@ let buildParamArgs =
 let run =
       \(config : Algebra.Config) ->
       \(input : Input) ->
+        let g = config.useGoogleUuid
+
+        let memberField = GoType.field g
+
         let name = input.name.inPascalCase
 
         let sqlConst = "${input.name.inCamelCase}SQL"
@@ -109,7 +122,7 @@ let run =
         let paramArgs =
               if hasParams then ", " ++ buildParamArgs input.params else ""
 
-        let paramsNeedTime = anyNeedsTime input.params
+        let paramsNeedTime = anyNeedsTime g input.params
 
         let resultColumns =
               merge
@@ -122,16 +135,18 @@ let run =
                 input.result
 
         let typeErrors =
-                memberErrors "param" input.params
-              # memberErrors "column" resultColumns
+                memberErrors g "param" input.params
+              # memberErrors g "column" resultColumns
 
         let needsTextFormats =
               Prelude.List.any
                 Sdk.Project.Member
                 ( \(m : Sdk.Project.Member) ->
-                    (GoType.forMember m).needsTextFormat
+                    (GoType.forMember g m).needsTextFormat
                 )
                 resultColumns
+
+        let needsUuid = anyNeedsUuid g (input.params # resultColumns)
 
         let formatsArg = if needsTextFormats then ", forceTextFormats" else ""
 
@@ -240,7 +255,7 @@ let run =
 
                       in  { method
                           , rowStruct
-                          , needsTime = anyNeedsTime columns
+                          , needsTime = anyNeedsTime g columns
                           , needsErrors = isOptional
                           , needsPgx = True
                           }
@@ -258,6 +273,7 @@ let run =
                     Output
                     { body
                     , needsTime = paramsNeedTime || resultPart.needsTime
+                    , needsUuid
                     , needsErrors = resultPart.needsErrors
                     , needsPgx = resultPart.needsPgx
                     , needsTextFormats

@@ -97,6 +97,7 @@ written in their canonical text form directly through pgx (see below).
 | `bytea` | `[]byte` | `[]byte` | |
 | `json/jsonb` | `[]byte` | `[]byte` | |
 | `uuid/numeric/inet/cidr/interval/macaddr/timetz/ltree` | `string` | `*string` | **viaString**: canonical text form, scanned/encoded as `string` directly |
+| `uuid` with `useGoogleUuid: true` | `uuid.UUID` | `*uuid.UUID` | github.com/google/uuid; pgx handles `[16]byte`-based types natively (verified vs PG 18: scan, NULL, arrays, encode) |
 | everything else | — | — | unsupported → compile error |
 
 **viaString rationale:** Go has no stdlib type for `uuid`/`numeric`/etc. Other
@@ -109,18 +110,27 @@ with such result columns pass a generated `forceTextFormats`
 (`pgx.QueryResultFormatsByOID`) option as the first `Query` argument. Verified
 empirically against pgx v5.9.2 + PostgreSQL 16 (scan, NULL, arrays, encode).
 
+**`useGoogleUuid` (implemented):** opt-in Bool config (default False; a Bool
+rather than a Text enum because released dhall lacks the `Text/equal` builtin,
+and it matches java.gen's `useOptional` convention). When True, `Uuid` maps to
+`uuid.UUID`/`*uuid.UUID` via the `needsUuid` import flag (plumbed like
+`needsTime` through Primitive/GoType/Query/CustomType; `GoType` entry points
+take `useGoogleUuid : Bool` first). go.mod then requires
+`github.com/google/uuid v1.6.0`. `tests/DemoGoogleUuid.dhall` (run by
+`make demo`) compiles the variant from the same fixture.
+
 **Go 1.27 stdlib `uuid` (planned):** golang/go#62026 is accepted (April 2026):
 stdlib gets a top-level `uuid` package with `type UUID [16]byte` (release not
 confirmed yet; milestone 1.27). Plan: add a `goVersion : Text` option to
 `Config.dhall` (default `"1.26"`); when `>= 1.27`, map `Uuid → uuid.UUID`
-(import flag `needsUuid`, like `needsTime`) instead of viaString — pgx scans
-`[16]byte`-based types directly, so uuid drops out of the viaString machinery
+from stdlib, reusing the `needsUuid` machinery — uuid drops out of viaString
 (numeric/inet/interval/... keep it). Switching the default to 1.27 is a separate
 breaking release later. Do not implement until the 1.27 release is confirmed.
 
-`Primitive.dhall` returns `{ notNull, nullable, needsTime, viaString, supported }`
-for each type. Unsupported types (`supported = False`) should make the generator
-report an error.
+`Primitive.dhall` returns
+`{ notNull, nullable, needsTime, needsUuid, viaString, needsTextFormat, supported }`
+for each type; `run` takes `useGoogleUuid : Bool` first. Unsupported types
+(`supported = False`) should make the generator report an error.
 
 ## Result Cardinality
 
@@ -168,7 +178,8 @@ Requirements: docker, go, git (dhall and pgn run in containers).
 
 ```bash
 make check   # dhall type-check gen/Gen.dhall + tests/GoType.test.dhall asserts
-make demo    # generate tests/output from tests/Fixtures/Demo.dhall + go vet
+make demo    # generate tests/output (default config) + tests/output-google
+             # (useGoogleUuid) from tests/Fixtures/Demo.dhall, go vet both
 make e2e     # full pipeline: e2e/run.sh — real pgn CLI (e2e/pgn.Dockerfile)
              # + pgenie-io/demo project + live PostgreSQL 18; compiles the
              # artifact and runs e2e/testdata/artifact_test.go against the DB
@@ -207,6 +218,8 @@ Phase 2 (not done — see the plan for details):
 - ✅ viaString — no conversion machinery needed: pgx scans/encodes `string`
   directly; inet/cidr/interval result columns get `forceTextFormats`
   (`needsTextFormat` in `Primitive.dhall`). E2E-verified against PostgreSQL 16.
+- ✅ `useGoogleUuid` — opt-in uuid → github.com/google/uuid mapping
+  (see Type Mapping above).
 - ✅ Cosmetics: exactly one blank line between queries. Struct-field alignment
   is left to `gofmt -w` as a post-generation step (pure Dhall cannot measure
   text length); the output is otherwise gofmt-clean.

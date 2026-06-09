@@ -55,13 +55,23 @@ let dbGo =
 
 let goMod =
       \(moduleName : Text) ->
-        ''
-        module ${moduleName}
+      \(needsUuid : Bool) ->
+        let requireBlock =
+              if    needsUuid
+              then  ''
+                    require (
+                    ${"\t"}github.com/google/uuid v1.6.0
+                    ${"\t"}github.com/jackc/pgx/v5 v5.9.2
+                    )''
+              else  "require github.com/jackc/pgx/v5 v5.9.2"
 
-        go 1.26
+        in  ''
+            module ${moduleName}
 
-        require github.com/jackc/pgx/v5 v5.9.2
-        ''
+            go 1.26
+
+            ${requireBlock}
+            ''
 
 let modelsGo =
       \(pkg : Text) ->
@@ -72,14 +82,27 @@ let modelsGo =
                 (\(t : CustomTypeGen.Output) -> t.needsTime)
                 customTypes
 
+        let needsUuid =
+              Prelude.List.any
+                CustomTypeGen.Output
+                (\(t : CustomTypeGen.Output) -> t.needsUuid)
+                customTypes
+
         let timeImport = if needsTime then [ "\t\"time\"" ] else [] : List Text
+
+        let uuidImport =
+              if    needsUuid
+              then  [ "\t\"github.com/google/uuid\"" ]
+              else  [] : List Text
 
         let importBlock =
               Prelude.Text.concatSep
                 "\n"
                 (   [ "\t\"context\"" ]
                   # timeImport
-                  # [ "", "\t\"github.com/jackc/pgx/v5\"" ]
+                  # [ "" ]
+                  # uuidImport
+                  # [ "\t\"github.com/jackc/pgx/v5\"" ]
                 )
 
         let bodies =
@@ -175,6 +198,15 @@ let run =
 
                 let needsTime = any (\(q : QueryGen.Output) -> q.needsTime)
 
+                let queriesNeedUuid =
+                      any (\(q : QueryGen.Output) -> q.needsUuid)
+
+                let modelsNeedUuid =
+                      Prelude.List.any
+                        CustomTypeGen.Output
+                        (\(t : CustomTypeGen.Output) -> t.needsUuid)
+                        customTypes
+
                 let needsTextFormats =
                       any (\(q : QueryGen.Output) -> q.needsTextFormats)
 
@@ -203,17 +235,25 @@ let run =
                         )
                       # (if needsTime then [ "\t\"time\"" ] else [] : List Text)
 
-                let pgxImports =
-                      if    needsPgx
-                      then  [ "\t\"github.com/jackc/pgx/v5\"" ]
-                      else  [] : List Text
+                let thirdPartyImports =
+                        ( if    queriesNeedUuid
+                          then  [ "\t\"github.com/google/uuid\"" ]
+                          else  [] : List Text
+                        )
+                      # ( if    needsPgx
+                          then  [ "\t\"github.com/jackc/pgx/v5\"" ]
+                          else  [] : List Text
+                        )
 
                 let importBlock =
                       Prelude.Text.concatSep
                         "\n"
                         (   stdImports
-                          # (if needsPgx then [ "" ] else [] : List Text)
-                          # pgxImports
+                          # ( if    needsPgx || queriesNeedUuid
+                              then  [ "" ]
+                              else  [] : List Text
+                            )
+                          # thirdPartyImports
                         )
 
                 let bodies =
@@ -239,7 +279,13 @@ let run =
 
                 let goModFile =
                       if    config.emitGoMod
-                      then  [ { path = "go.mod", content = goMod moduleName } ]
+                      then  [ { path = "go.mod"
+                              , content =
+                                  goMod
+                                    moduleName
+                                    (queriesNeedUuid || modelsNeedUuid)
+                              }
+                            ]
                       else  [] : List Lude.File.Type
 
                 let modelsFile =

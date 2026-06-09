@@ -180,6 +180,11 @@ the few types whose binary codec can't (`inet`/`cidr`/`interval`) are fetched
 in text format automatically. Other PostgreSQL types are currently unsupported
 and produce a generation error.
 
+With `useGoogleUuid: true` the `uuid` type maps to `uuid.UUID` / `*uuid.UUID`
+from [github.com/google/uuid](https://github.com/google/uuid) instead (pgx
+handles `[16]byte`-based types natively, arrays included); the other
+text-form types are unaffected.
+
 ## Configuration
 
 All keys are optional (`config` may be omitted entirely):
@@ -193,6 +198,10 @@ artifacts:
       emitGoMod: true    # emit go.mod, making the artifact a standalone
                          # module (default: true); set false to vendor the
                          # package into an existing module
+      useGoogleUuid: false  # map uuid columns to uuid.UUID from
+                            # github.com/google/uuid instead of string
+                            # (default: false — keeps the public API free
+                            # of third-party types)
 ```
 
 ## Generated Code Structure

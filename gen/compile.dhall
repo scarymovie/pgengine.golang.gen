@@ -35,6 +35,8 @@ in  \(config : Optional Config.Type) ->
                 field Bool (\(c : Config.Type) -> c.generateTests) False config
             , emitGoMod =
                 field Bool (\(c : Config.Type) -> c.emitGoMod) True config
+            , useGoogleUuid =
+                field Bool (\(c : Config.Type) -> c.useGoogleUuid) False config
             }
 
       in  ProjectInterpreter.run interpreterConfig project

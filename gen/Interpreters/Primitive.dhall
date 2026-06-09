@@ -11,6 +11,9 @@
 -- interval) are requested in text format via pgx.QueryResultFormatsByOID
 -- (needsTextFormat = True).
 --
+-- With useGoogleUuid the uuid type maps to github.com/google/uuid's
+-- uuid.UUID instead (pgx handles [16]byte-based types natively).
+--
 -- Unsupported types report a compile error via the caller (supported = False).
 let Deps = ../Deps/package.dhall
 
@@ -20,6 +23,7 @@ let Output =
       { notNull : Text
       , nullable : Text
       , needsTime : Bool
+      , needsUuid : Bool
       , viaString : Bool
       , needsTextFormat : Bool
       , supported : Bool
@@ -30,6 +34,7 @@ let native =
         { notNull = t
         , nullable = "*${t}"
         , needsTime = False
+        , needsUuid = False
         , viaString = False
         , needsTextFormat = False
         , supported = True
@@ -39,6 +44,7 @@ let timeType =
       { notNull = "time.Time"
       , nullable = "*time.Time"
       , needsTime = True
+      , needsUuid = False
       , viaString = False
       , needsTextFormat = False
       , supported = True
@@ -49,6 +55,7 @@ let slice =
         { notNull = t
         , nullable = t
         , needsTime = False
+        , needsUuid = False
         , viaString = False
         , needsTextFormat = False
         , supported = True
@@ -58,6 +65,7 @@ let viaStr =
       { notNull = "string"
       , nullable = "*string"
       , needsTime = False
+      , needsUuid = False
       , viaString = True
       , needsTextFormat = False
       , supported = True
@@ -65,17 +73,29 @@ let viaStr =
 
 let viaStrText = viaStr // { needsTextFormat = True }
 
+let googleUuid =
+      { notNull = "uuid.UUID"
+      , nullable = "*uuid.UUID"
+      , needsTime = False
+      , needsUuid = True
+      , viaString = False
+      , needsTextFormat = False
+      , supported = True
+      }
+
 let unsupported =
       \(name : Text) ->
         { notNull = ""
         , nullable = ""
         , needsTime = False
+        , needsUuid = False
         , viaString = False
         , needsTextFormat = False
         , supported = False
         }
 
 let run =
+      \(useGoogleUuid : Bool) ->
       \(input : Input) ->
         merge
           { Bit = unsupported "bit"
@@ -135,7 +155,7 @@ let run =
           , Tstzmultirange = unsupported "tstzmultirange"
           , Tstzrange = unsupported "tstzrange"
           , Tsvector = unsupported "tsvector"
-          , Uuid = viaStr
+          , Uuid = if useGoogleUuid then googleUuid else viaStr
           , Varbit = unsupported "varbit"
           , Varchar = native "string"
           , Xml = unsupported "xml"

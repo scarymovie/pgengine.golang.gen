@@ -13,7 +13,9 @@ Initial release.
 - Types without a native Go equivalent (uuid, numeric, inet, ...) exposed as
   canonical text `string`; inet/cidr/interval result columns fetched in text
   format automatically.
-- Config options: `packageName`, `emitGoMod`.
+- Config options: `packageName`, `emitGoMod`, `useGoogleUuid` (opt-in mapping
+  of uuid columns to `uuid.UUID` from github.com/google/uuid instead of the
+  default canonical-text `string`).
 - Unsupported PostgreSQL types produce a generation error instead of broken code.
 - E2E-tested through the real pgn CLI against pgenie-io/demo and a live
   PostgreSQL 18.

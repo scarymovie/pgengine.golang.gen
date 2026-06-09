@@ -21,53 +21,90 @@ let dim =
       \(elemNull : Bool) ->
         Some { dimensionality = n, elementIsNullable = elemNull }
 
+let forValue = GoType.forValue False
+
+let forValueGoogle = GoType.forValue True
+
 let notNullText =
-      assert : (GoType.forValue (value P.Text noArr) False).goType === "string"
+      assert : (forValue (value P.Text noArr) False).goType === "string"
 
 let nullableText =
-      assert : (GoType.forValue (value P.Text noArr) True).goType === "*string"
+      assert : (forValue (value P.Text noArr) True).goType === "*string"
 
 let textArray =
         assert
-      :     (GoType.forValue (value P.Text (dim 1 False)) False).goType
-        ===  "[]string"
+      : (forValue (value P.Text (dim 1 False)) False).goType === "[]string"
 
 let nullableArrayIsStillSlice =
         assert
-      :     (GoType.forValue (value P.Int4 (dim 2 False)) True).goType
-        ===  "[][]int32"
+      : (forValue (value P.Int4 (dim 2 False)) True).goType === "[][]int32"
 
 let nullableElement =
         assert
-      :     (GoType.forValue (value P.Text (dim 1 True)) False).goType
-        ===  "[]*string"
+      : (forValue (value P.Text (dim 1 True)) False).goType === "[]*string"
 
 let unsupportedReportsErr =
         assert
-      :     (GoType.forValue (value P.Tsvector noArr) False).err
+      :     (forValue (value P.Tsvector noArr) False).err
         ===  Some "unsupported PostgreSQL type \"tsvector\""
 
 let supportedHasNoErr =
-      assert : (GoType.forValue (value P.Text noArr) False).err === None Text
+      assert : (forValue (value P.Text noArr) False).err === None Text
 
 let ltreeIsViaString =
-      assert : (GoType.forValue (value P.Ltree noArr) False).goType === "string"
+      assert : (forValue (value P.Ltree noArr) False).goType === "string"
 
 let dateNeedsTime =
-      assert : (GoType.forValue (value P.Date noArr) False).needsTime === True
+      assert : (forValue (value P.Date noArr) False).needsTime === True
 
 let inetNeedsTextFormat =
-        assert
-      : (GoType.forValue (value P.Inet noArr) False).needsTextFormat === True
+      assert : (forValue (value P.Inet noArr) False).needsTextFormat === True
 
 let intervalArrayNeedsTextFormat =
         assert
-      :     ( GoType.forValue (value P.Interval (dim 1 False)) False
-            ).needsTextFormat
+      :     (forValue (value P.Interval (dim 1 False)) False).needsTextFormat
         ===  True
 
 let uuidScansDirectly =
+      assert : (forValue (value P.Uuid noArr) False).needsTextFormat === False
+
+let uuidDefaultsToString =
+      assert : (forValue (value P.Uuid noArr) False).goType === "string"
+
+let uuidDefaultNeedsNoImport =
+      assert : (forValue (value P.Uuid noArr) False).needsUuid === False
+
+let googleUuidNotNull =
         assert
-      : (GoType.forValue (value P.Uuid noArr) False).needsTextFormat === False
+      : (forValueGoogle (value P.Uuid noArr) False).goType === "uuid.UUID"
+
+let googleUuidNullable =
+        assert
+      : (forValueGoogle (value P.Uuid noArr) True).goType === "*uuid.UUID"
+
+let googleUuidArray =
+        assert
+      :     (forValueGoogle (value P.Uuid (dim 1 False)) False).goType
+        ===  "[]uuid.UUID"
+
+let googleUuidNullableElement =
+        assert
+      :     (forValueGoogle (value P.Uuid (dim 1 True)) False).goType
+        ===  "[]*uuid.UUID"
+
+let googleUuidNeedsImport =
+      assert : (forValueGoogle (value P.Uuid noArr) False).needsUuid === True
+
+let googleUuidScansDirectly =
+        assert
+      : (forValueGoogle (value P.Uuid noArr) False).needsTextFormat === False
+
+let googleModeLeavesNumericAlone =
+        assert
+      : (forValueGoogle (value P.Numeric noArr) False).goType === "string"
+
+let googleModeLeavesNumericImportFree =
+        assert
+      : (forValueGoogle (value P.Numeric noArr) False).needsUuid === False
 
 in  "ok"

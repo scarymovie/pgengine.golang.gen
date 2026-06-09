@@ -9,7 +9,8 @@ DHALL := docker run --rm -v "$(CURDIR):/work" -w /work \
 
 DHALL_SOURCES := gen/Gen.dhall gen/Config.dhall gen/compile.dhall \
   gen/Algebras/Interpreter.dhall $(wildcard gen/Interpreters/*.dhall) \
-  tests/Demo.dhall tests/GoType.test.dhall tests/Fixtures/Demo.dhall
+  tests/Demo.dhall tests/DemoGoogleUuid.dhall tests/GoType.test.dhall \
+  tests/Fixtures/Demo.dhall
 
 .PHONY: check demo e2e fmt clean
 
@@ -19,12 +20,16 @@ check:
 	$(DHALL) --file tests/GoType.test.dhall > /dev/null
 	@echo "check: OK"
 
-## Generate tests/output from the local fixture and verify it compiles.
+## Generate tests/output from the local fixture and verify it compiles
+## (default config and the useGoogleUuid variant).
 demo:
-	rm -rf tests/output
+	rm -rf tests/output tests/output-google
 	$(DHALL) to-directory-tree --file tests/Demo.dhall \
 	  --output tests/output --allow-path-separators
 	cd tests/output && go mod tidy && go vet ./...
+	$(DHALL) to-directory-tree --file tests/DemoGoogleUuid.dhall \
+	  --output tests/output-google --allow-path-separators
+	cd tests/output-google && go mod tidy && go vet ./...
 	@echo "demo: OK"
 
 ## Full e2e: run the generator through the real pGenie CLI against the
@@ -37,4 +42,4 @@ fmt:
 	$(DHALL) format --inplace $(DHALL_SOURCES)
 
 clean:
-	rm -rf tests/output .dhall-cache
+	rm -rf tests/output tests/output-google .dhall-cache
