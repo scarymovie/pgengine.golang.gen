@@ -85,6 +85,15 @@ generators pull libraries (Java `UUID`/`BigDecimal`, Rust `uuid`/`rust_decimal`,
 Haskell `UUID`/`Scientific`). To keep the public API dependency-free we expose a
 canonical `string` and convert from the internal `pgtype.*` scan field.
 
+**Go 1.27 stdlib `uuid` (planned):** golang/go#62026 is accepted (April 2026):
+stdlib gets a top-level `uuid` package with `type UUID [16]byte` (release not
+confirmed yet; milestone 1.27). Plan: add a `goVersion : Text` option to
+`Config.dhall` (default `"1.26"`); when `>= 1.27`, map `Uuid → uuid.UUID`
+(import flag `needsUuid`, like `needsTime`) instead of viaString — pgx scans
+`[16]byte`-based types directly, so uuid drops out of the viaString machinery
+(numeric/inet/interval/... keep it). Switching the default to 1.27 is a separate
+breaking release later. Do not implement until the 1.27 release is confirmed.
+
 `Primitive.dhall` returns `{ notNull, nullable, needsTime, viaString, supported }`
 for each type. Unsupported types (`supported = False`) should make the generator
 report an error.
