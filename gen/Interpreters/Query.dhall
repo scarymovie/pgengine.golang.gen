@@ -1,7 +1,6 @@
 -- Query interpreter: renders one SQL query into a Go body fragment
 -- (SQL const + Params struct + Row struct + method) plus the import flags the
 -- containing file needs. The file header/imports are assembled by Project.dhall.
-
 let Deps = ../Deps/package.dhall
 
 let Algebra = ../Algebras/Interpreter.dhall
@@ -15,20 +14,14 @@ let GoType = ./GoType.dhall
 let Input = Sdk.Project.Query
 
 let Output =
-      { body : Text
-      , needsTime : Bool
-      , needsErrors : Bool
-      , needsPgx : Bool
-      }
+      { body : Text, needsTime : Bool, needsErrors : Bool, needsPgx : Bool }
 
 let toPascal = Deps.CodegenKit.Name.toTextInPascal
 
 let toCamel = Deps.CodegenKit.Name.toTextInCamel
 
--- Struct field line for a Member.
 let memberField = GoType.field
 
--- Any member maps to time.Time?
 let anyNeedsTime =
       \(members : List Sdk.Project.Member) ->
         Prelude.List.any
@@ -36,8 +29,6 @@ let anyNeedsTime =
           (\(m : Sdk.Project.Member) -> (GoType.forMember m).needsTime)
           members
 
--- Unsupported-type errors for a list of members, prefixed with their role
--- (param/column) and pg name.
 let memberErrors =
       \(label : Text) ->
       \(members : List Sdk.Project.Member) ->
@@ -57,7 +48,6 @@ let memberErrors =
               members
           )
 
--- Reconstruct SQL with $1,$2,... placeholders.
 let buildSQL =
       \(fragments : Sdk.Project.QueryFragments) ->
         Prelude.Text.concatMap
@@ -111,8 +101,7 @@ let run =
                     ''
               else  ""
 
-        let paramDecl =
-              if hasParams then ", params ${name}Params" else ""
+        let paramDecl = if hasParams then ", params ${name}Params" else ""
 
         let paramArgs =
               if hasParams then ", " ++ buildParamArgs input.params else ""
@@ -132,22 +121,21 @@ let run =
                 memberErrors "param" input.params
               # memberErrors "column" resultColumns
 
-        -- result handling: Optional ResultRows
         let resultPart =
               merge
                 { None =
-                    { method =
-                        ''
-                        func (q *Queries) ${name}(ctx context.Context${paramDecl}) error {
-                        	_, err := q.db.Exec(ctx, ${sqlConst}${paramArgs})
-                        	return err
-                        }
-                        ''
-                    , rowStruct = ""
-                    , needsTime = False
-                    , needsErrors = False
-                    , needsPgx = False
-                    }
+                  { method =
+                      ''
+                      func (q *Queries) ${name}(ctx context.Context${paramDecl}) error {
+                      	_, err := q.db.Exec(ctx, ${sqlConst}${paramArgs})
+                      	return err
+                      }
+                      ''
+                  , rowStruct = ""
+                  , needsTime = False
+                  , needsErrors = False
+                  , needsPgx = False
+                  }
                 , Some =
                     \(rows : Sdk.Project.ResultRows) ->
                       let columns =
@@ -214,7 +202,10 @@ let run =
 
                       let isOptional =
                             merge
-                              { Optional = True, Single = False, Multiple = False }
+                              { Optional = True
+                              , Single = False
+                              , Multiple = False
+                              }
                               rows.cardinality
 
                       in  { method

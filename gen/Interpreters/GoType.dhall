@@ -1,7 +1,6 @@
 -- Maps a Member's Value to its Go type, import needs and a possible
 -- unsupported-type error. Shared by Query.dhall (params, result rows) and
 -- CustomType.dhall (composite members, domains).
-
 let Deps = ../Deps/package.dhall
 
 let Sdk = Deps.Sdk
@@ -12,13 +11,12 @@ let toPascal = Deps.CodegenKit.Name.toTextInPascal
 
 let Info = { goType : Text, needsTime : Bool, err : Optional Text }
 
--- Primitive table entry extended with the pg type name (for error messages).
 let scalarInfo =
       \(scalar : Sdk.Project.Scalar) ->
         merge
           { Primitive =
               \(p : Sdk.Project.Primitive) ->
-                PrimMap.run p /\ { pgType = Sdk.Project.`Primitive/toText` p }
+                PrimMap.run p /\ { pgType = Sdk.Project.Primitive/toText p }
           , Custom =
               \(name : Sdk.Project.Name) ->
                 { notNull = toPascal name
@@ -31,9 +29,6 @@ let scalarInfo =
           }
           scalar
 
--- Go type for a Value given outer nullability. Arrays become slices
--- ([]T per dimension); slices are already nilable, so a nullable array maps
--- to the same slice type, while a nullable element maps to a pointer element.
 let forValue
     : Sdk.Project.Value -> Bool -> Info
     = \(value : Sdk.Project.Value) ->
@@ -66,12 +61,10 @@ let forValue
                 else  Some "unsupported PostgreSQL type \"${s.pgType}\""
             }
 
--- The err message is unprefixed; callers add context (param/column/field name).
 let forMember
     : Sdk.Project.Member -> Info
     = \(m : Sdk.Project.Member) -> forValue m.value m.isNullable
 
--- Struct field line shared by Params/Row/composite structs.
 let field =
       \(m : Sdk.Project.Member) ->
         "\t${toPascal m.name} ${(forMember m).goType} `db:\"${m.pgName}\"`"

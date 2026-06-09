@@ -29,6 +29,7 @@ The generator is written in Dhall:
   - `Primitive.dhall` — the PostgreSQL→Go type table.
   - `GoType.dhall` — shared Member/Value → Go type mapping (arrays,
     nullability, unsupported-type errors). Tests: `tests/GoType.test.dhall`.
+  - `CustomType.dhall` — enum/composite/domain → Go type for `models.go`.
 
 The reference for the desired output is **tests/expected/** (golden files). The
 generator output is diffed against it.
@@ -53,7 +54,7 @@ Flat package (matches tests/expected/):
 generated/
 ├── go.mod
 ├── db.go            # DBTX interface, Queries struct, New(), WithTx()
-├── models.go        # custom types (enums, composites) — Phase 2
+├── models.go        # custom types (enum/composite/domain) + RegisterTypes; omitted if none
 └── queries.sql.go   # per-query: SQL const, Params/Row structs, method
 ```
 
@@ -179,8 +180,11 @@ Phase 2 (not done — see the plan for details):
 - ✅ Arrays — `value.arraySettings` maps to slices (`[]T` per dimension,
   nullable element → `[]*T`). Shared mapping lives in
   `gen/Interpreters/GoType.dhall` (unit tests: `tests/GoType.test.dhall`).
-- ⏳ Custom types (enums, composites) → `models.go`; currently referenced
-  (`AlbumFormat`, ...) but undefined.
+- ✅ Custom types → `models.go` (`gen/Interpreters/CustomType.dhall`):
+  enum → `type X string` + consts; composite → struct with db tags;
+  domain → type alias. Plus a `RegisterTypes(ctx, conn)` helper that
+  `conn.LoadType`s every type (and its `_array` form) with a retry loop, so
+  declaration order doesn't matter for composites referencing composites.
 - ⏳ viaString conversion (uuid/numeric → string) — internal pgtype scan + convert.
 - ⏳ Cosmetics: gofmt alignment, blank lines between queries.
 
