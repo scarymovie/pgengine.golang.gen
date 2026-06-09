@@ -20,3 +20,6 @@ tests/output/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local dhall cache
+.dhall-cache/
