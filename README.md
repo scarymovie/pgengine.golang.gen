@@ -22,7 +22,7 @@ version: 1.0.0
 postgres: 18
 
 artifacts:
-  go: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.1.0/resolved.dhall
+  go: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.2.0/resolved.dhall
 ```
 
 Each release ships `resolved.dhall` — a frozen, self-contained Dhall package
@@ -192,7 +192,7 @@ All keys are optional (`config` may be omitted entirely):
 ```yaml
 artifacts:
   go:
-    gen: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.1.0/resolved.dhall
+    gen: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.2.0/resolved.dhall
     config:
       packageName: db    # Go package name (default: project name)
       emitGoMod: true    # emit go.mod, making the artifact a standalone

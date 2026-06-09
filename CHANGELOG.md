@@ -1,4 +1,4 @@
-# Upcoming
+# v0.2.0
 
 - `useGoogleUuid` config option: opt-in mapping of uuid columns to `uuid.UUID`
   from github.com/google/uuid (pointer when nullable, slices for arrays)
