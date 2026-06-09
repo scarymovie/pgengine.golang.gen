@@ -1,3 +1,9 @@
--- Import gen-sdk package
-https://raw.githubusercontent.com/pgenie-io/gen-sdk/f45f4eca04f5d2d7e2672a840aaa04255d0c553b/dhall/package.dhall
-  sha256:40384c6faf3f67bfbc1c18c88f95c7cf718e9e76782e9f98c05f95ac7d8e2671
+-- Import gen-sdk (contract version 3.0).
+-- Project and module are imported directly, bypassing the SDK's package.dhall:
+-- its Fixtures use the Text/equal builtin, which released dhall versions
+-- (<= 1.42.2) do not support yet. The generator itself doesn't need fixtures.
+{ Project =
+    https://raw.githubusercontent.com/pgenie-io/gen-sdk/v0.10.2/dhall/Project.dhall
+, module =
+    https://raw.githubusercontent.com/pgenie-io/gen-sdk/v0.10.2/dhall/module.dhall
+}

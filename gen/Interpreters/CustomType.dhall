@@ -15,6 +15,8 @@ let Prelude = Deps.Prelude
 
 let GoType = ./GoType.dhall
 
+let Lude = Deps.Lude
+
 let Input = Sdk.Project.CustomType
 
 let Output =
@@ -23,8 +25,6 @@ let Output =
       , pgFullName : Text
       , pgArrayFullName : Text
       }
-
-let toPascal = Deps.CodegenKit.Name.toTextInPascal
 
 let memberErrors =
       \(members : List Sdk.Project.Member) ->
@@ -53,7 +53,7 @@ let anyNeedsTime =
 let run =
       \(config : Algebra.Config) ->
       \(input : Input) ->
-        let typeName = toPascal input.name
+        let typeName = input.name.inPascalCase
 
         let pgFullName = "${input.pgSchema}.${input.pgName}"
 
@@ -68,8 +68,7 @@ let run =
                               "\n"
                               Sdk.Project.EnumVariant
                               ( \(v : Sdk.Project.EnumVariant) ->
-                                  "\t${typeName}${toPascal
-                                                    v.name} ${typeName} = \"${v.pgName}\""
+                                  "\t${typeName}${v.name.inPascalCase} ${typeName} = \"${v.pgName}\""
                               )
                               variants
 
@@ -122,14 +121,14 @@ let run =
                 input.definition
 
         in  if    Prelude.List.null Text rendered.errors
-            then  Sdk.Compiled.applicative.pure
+            then  Lude.Compiled.applicative.pure
                     Output
                     { body = rendered.body
                     , needsTime = rendered.needsTime
                     , pgFullName
                     , pgArrayFullName
                     }
-            else  Sdk.Compiled.err
+            else  Lude.Compiled.err
                     Output
                     [ pgFullName ]
                     (Prelude.Text.concatSep "; " rendered.errors)

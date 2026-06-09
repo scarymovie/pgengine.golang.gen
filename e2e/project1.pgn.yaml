@@ -1,0 +1,13 @@
+# pGenie project config for the e2e run (replaces the one from
+# pgenie-io/demo). The single artifact is this repository's generator,
+# mounted at /gen-src by e2e/run.sh.
+space: my_space
+
+name: music_catalogue
+
+version: 1.0.1
+
+postgres: 18
+
+artifacts:
+  go: /gen-src/gen/Gen.dhall

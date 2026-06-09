@@ -7,8 +7,6 @@ let Sdk = Deps.Sdk
 
 let PrimMap = ./Primitive.dhall
 
-let toPascal = Deps.CodegenKit.Name.toTextInPascal
-
 let Info =
       { goType : Text
       , needsTime : Bool
@@ -24,8 +22,8 @@ let scalarInfo =
                 PrimMap.run p /\ { pgType = Sdk.Project.Primitive/toText p }
           , Custom =
               \(name : Sdk.Project.Name) ->
-                { notNull = toPascal name
-                , nullable = "*${toPascal name}"
+                { notNull = name.inPascalCase
+                , nullable = "*${name.inPascalCase}"
                 , needsTime = False
                 , viaString = False
                 , needsTextFormat = False
@@ -74,6 +72,6 @@ let forMember
 
 let field =
       \(m : Sdk.Project.Member) ->
-        "\t${toPascal m.name} ${(forMember m).goType} `db:\"${m.pgName}\"`"
+        "\t${m.name.inPascalCase} ${(forMember m).goType} `db:\"${m.pgName}\"`"
 
 in  { Info, forValue, forMember, field }

@@ -1,9 +1,8 @@
--- Demo: run the generator against the gen-sdk built-in fixture project and
--- expose the result as a directory-tree map.
+-- Demo: run the generator against the local demo fixture and expose the
+-- result as a directory-tree map.
 --
 -- Generate the output tree with:
 --   dhall to-directory-tree --file tests/Demo.dhall --output tests/output --allow-path-separators
-
 let Deps = ../gen/Deps/package.dhall
 
 let Prelude = Deps.Prelude
@@ -14,7 +13,7 @@ let File = { path : Text, content : Text }
 
 let Entry = { mapKey : Text, mapValue : Text }
 
-let project = Deps.Sdk.Fixtures.Demo
+let project = ./Fixtures/Demo.dhall
 
 let compiled = Gen.compile (None Gen.Config) project
 

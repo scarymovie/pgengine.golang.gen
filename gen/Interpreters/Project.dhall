@@ -8,13 +8,15 @@ let Sdk = Deps.Sdk
 
 let Prelude = Deps.Prelude
 
+let Lude = Deps.Lude
+
 let QueryGen = ./Query.dhall
 
 let CustomTypeGen = ./CustomType.dhall
 
 let Input = Sdk.Project.Project
 
-let Output = List Sdk.File.Type
+let Output = List Lude.File.Type
 
 let dbGo =
       \(pkg : Text) ->
@@ -145,16 +147,16 @@ let run =
         let pkg = config.packageName
 
         let compiledQueries
-            : Sdk.Compiled.Type (List QueryGen.Output)
-            = Sdk.Compiled.traverseList
+            : Lude.Compiled.Type (List QueryGen.Output)
+            = Lude.Compiled.traverseList
                 Sdk.Project.Query
                 QueryGen.Output
                 (QueryGen.run config)
                 input.queries
 
         let compiledCustomTypes
-            : Sdk.Compiled.Type (List CustomTypeGen.Output)
-            = Sdk.Compiled.traverseList
+            : Lude.Compiled.Type (List CustomTypeGen.Output)
+            = Lude.Compiled.traverseList
                 Sdk.Project.CustomType
                 CustomTypeGen.Output
                 (CustomTypeGen.run config)
@@ -233,29 +235,30 @@ let run =
                       ${textFormatsVar}
                       ${bodies}''
 
-                let moduleName =
-                          Deps.CodegenKit.Name.toTextInSnake input.space
-                      ++  "/"
-                      ++  pkg
+                let moduleName = input.space.inSnakeCase ++ "/" ++ pkg
+
+                let goModFile =
+                      if    config.emitGoMod
+                      then  [ { path = "go.mod", content = goMod moduleName } ]
+                      else  [] : List Lude.File.Type
 
                 let modelsFile =
                       if    Prelude.List.null CustomTypeGen.Output customTypes
-                      then  [] : List Sdk.File.Type
+                      then  [] : List Lude.File.Type
                       else  [ { path = "models.go"
                               , content = modelsGo pkg customTypes
                               }
                             ]
 
-                in    [ { path = "go.mod", content = goMod moduleName }
-                      , { path = "db.go", content = dbGo pkg }
-                      ]
+                in    goModFile
+                    # [ { path = "db.go", content = dbGo pkg } ]
                     # modelsFile
                     # [ { path = "queries.sql.go", content = queriesFile } ]
 
-        in  Sdk.Compiled.map2
+        in  Lude.Compiled.map2
               (List CustomTypeGen.Output)
               (List QueryGen.Output)
-              (List Sdk.File.Type)
+              (List Lude.File.Type)
               assemble
               compiledCustomTypes
               compiledQueries

@@ -13,16 +13,20 @@ follows the gen-sdk contract.
 
 The generator is written in Dhall:
 
-- **gen/Gen.dhall** — entry point, implements `Sdk.module`.
-- **gen/Config.dhall** — configuration schema (`Type` + `default`).
-- **gen/compile.dhall** — builds the interpreter config and runs the Project interpreter.
-- **gen/Algebras/Interpreter.dhall** — wraps an interpreter `run` into the
-  `Sdk.Compiled.Type` the SDK expects (`{ Input, Output, Result, Run, run }`).
+- **gen/Gen.dhall** — entry point, implements `Sdk.module` (contract 3.0,
+  consumed by pgn >= 0.6).
+- **gen/Config.dhall** — configuration schema. All fields are `Optional` so a
+  partial `config:` from project1.pgn.yaml decodes; defaults live in compile.dhall.
+- **gen/compile.dhall** — applies config defaults and runs the Project interpreter.
+- **gen/Algebras/Interpreter.dhall** — wraps an interpreter `run` into
+  `Lude.Compiled.Type` (`{ Input, Output, Result, Run, run }`).
 - **gen/Deps/** — pinned dependencies (`package.dhall` re-exports them):
-  - `Sdk.dhall` — gen-sdk `f45f4eca`
+  - `Sdk.dhall` — gen-sdk **v0.10.2** (contract 3.0). Imports `Project.dhall`
+    and `module.dhall` directly, bypassing the SDK's package.dhall: its
+    Fixtures need the `Text/equal` builtin, which released dhall (<= 1.42.2)
+    lacks (pgn itself runs a patched dhall fork, so loading via pgn is fine).
   - `Prelude.dhall` — v23.1.0
-  - `Lude.dhall` — v1.0.0
-  - `CodegenKit.dhall` — v0.3.0 (name conversion: `Name.toTextInPascal/Snake/...`)
+  - `Lude.dhall` — v4.0.0 (provides `Compiled`, `File`/`Files`)
 - **gen/Interpreters/**
   - `Project.dhall` — `Project → List Sdk.File` (emits `go.mod`, `db.go`, queries).
   - `Query.dhall` — one `Query → Go file` (SQL const, Params struct, Row struct, method).
@@ -32,19 +36,24 @@ The generator is written in Dhall:
   - `CustomType.dhall` — enum/composite/domain → Go type for `models.go`.
 
 The reference for the desired output is **tests/expected/** (golden files). The
-generator output is diffed against it.
+generator output is diffed against it. The local test fixture (new-model
+Project value) lives in **tests/Fixtures/Demo.dhall**.
 
-### gen-sdk model notes
+### gen-sdk model notes (contract 3.0)
 
-- `Sdk.Project.Name` is a structure of characters, NOT a string. Convert with
-  `Deps.CodegenKit.Name.toTextInPascal name` / `toTextInSnake name`.
-- `Sdk.Project.Query.result : Optional ResultRows` (merge `None`/`Some`).
+- `Sdk.Project.Name` is a record of pre-rendered case forms:
+  `name.inPascalCase`, `name.inCamelCase`, `name.inSnakeCase`, ...
+- `Sdk.Project.Query.result : < Void | RowsAffected | Rows : ResultRows >`:
+  Void → `error`; RowsAffected → `(int64, error)` via `tag.RowsAffected()`;
+  Rows → per cardinality (see Result Cardinality below).
 - `ResultRows.cardinality : < Optional | Single | Multiple >`,
   `ResultRows.columns : NonEmpty Member`.
 - `Member = { isNullable : Bool, name : Name, pgName : Text, value : { scalar, arraySettings } }`.
 - `Scalar = < Primitive : Primitive | Custom : Name >`.
-- An interpreter `run` must return `Sdk.Compiled.Type Output`; wrap plain values
-  with `Sdk.Compiled.applicative.pure`.
+- `Query` also carries `identity : Bool` (currently unused by this generator).
+- An interpreter `run` must return `Lude.Compiled.Type Output`; wrap plain
+  values with `Lude.Compiled.applicative.pure`, report errors with
+  `Lude.Compiled.err Output path message`.
 
 ## Generated Code Structure
 
@@ -52,11 +61,15 @@ Flat package (matches tests/expected/):
 
 ```
 generated/
-├── go.mod
+├── go.mod           # optional (config emitGoMod, default true)
 ├── db.go            # DBTX interface, Queries struct, New(), WithTx()
 ├── models.go        # custom types (enum/composite/domain) + RegisterTypes; omitted if none
 └── queries.sql.go   # per-query: SQL const, Params/Row structs, method
 ```
+
+With `emitGoMod: true` (default) the artifact is a standalone Go module
+(consumed via go.work or a replace directive); with `false` only package
+sources are emitted, for vendoring into an existing module.
 
 ## Type Mapping
 
@@ -114,7 +127,8 @@ report an error.
 - **Single** → `(Row, error)`; `pgx.CollectOneRow(rows, pgx.RowToStructByName[Row])`.
 - **Optional** → `(*Row, error)`; `CollectOneRow`, return `nil, nil` on `pgx.ErrNoRows`.
 - **Multiple** → `([]Row, error)`; `pgx.CollectRows(rows, pgx.RowToStructByName[Row])`.
-- **No result rows** (`result = None`) → `error`; `q.db.Exec(...)`.
+- **RowsAffected** → `(int64, error)`; `q.db.Exec(...)` + `tag.RowsAffected()`.
+- **Void** → `error`; `q.db.Exec(...)`.
 
 ## Design Decisions — MVP
 
@@ -150,36 +164,29 @@ func (q *Queries) GetUser(ctx context.Context, params GetUserParams) (User, erro
 
 ## Development Commands
 
+Requirements: docker, go, git (dhall and pgn run in containers).
+
 ```bash
-# Type-check (Docker; no local dhall needed)
-docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
-  dhall type --file gen/Gen.dhall
-
-# Format
-docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
-  dhall format --inplace gen/Gen.dhall
-
-# Generate the demo (gen-sdk music_catalogue fixture) into a directory tree
-docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
-  dhall to-directory-tree --file tests/Demo.dhall --output tests/output --allow-path-separators
-# Inspect tests/output/queries.sql.go (different schema than tests/expected/, so no byte diff)
-
-# Unit tests for the type mapping (asserts fail evaluation on mismatch)
-docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
-  dhall --file tests/GoType.test.dhall
-
-# Verify generated output compiles; align struct fields
-cd tests/output && go mod tidy && go vet ./... && gofmt -w .
+make check   # dhall type-check gen/Gen.dhall + tests/GoType.test.dhall asserts
+make demo    # generate tests/output from tests/Fixtures/Demo.dhall + go vet
+make e2e     # full pipeline: e2e/run.sh — real pgn CLI (e2e/pgn.Dockerfile)
+             # + pgenie-io/demo project + live PostgreSQL 18; compiles the
+             # artifact and runs e2e/testdata/artifact_test.go against the DB
+make fmt     # dhall format --inplace over all Dhall sources
+# gofmt -w on generated output aligns struct fields (pure Dhall can't)
 ```
 
 ## Status
 
-Generator works end-to-end. `gen/Gen.dhall` type-checks; running the demo against
-the gen-sdk fixture produces `go.mod`, `db.go`, `queries.sql.go` for all
-cardinalities (Single/Optional/Multiple/exec), with nullable→pointer mapping and
-computed imports.
+Generator works end-to-end **through the real pGenie pipeline**: `make e2e`
+runs pgn v0.6.2 on the official pgenie-io/demo project, the artifact compiles
+(`go vet`) and its queries pass against a live PostgreSQL 18 (composites via
+RegisterTypes, enums, ltree, RowsAffected, Optional→nil).
 
-- ✅ gen-sdk integration; `gen/Gen.dhall` type-checks.
+- ✅ gen-sdk **v0.10.2 / contract 3.0** integration (pgn >= 0.6); `Result`
+  Void/RowsAffected/Rows, pre-rendered `Name`, `Lude.Compiled`.
+- ✅ Partial config decoding (`config: { emitGoMod: false }`) — Config fields
+  are Optional, defaults in compile.dhall; `emitGoMod` toggles go.mod.
 - ✅ Type table (`Primitive.dhall`) — native-only public mapping.
 - ✅ `Query.dhall` rendering (SQL const, Params/Row structs, method, import flags).
 - ✅ `Project.dhall` assembling `go.mod` + `db.go` + single `queries.sql.go`.
@@ -205,9 +212,9 @@ Phase 2 (not done — see the plan for details):
   text length); the output is otherwise gofmt-clean.
 
 **Note on `tests/expected/`:** it is a hand-written style reference on a simple
-`users` schema. The demo runs on the gen-sdk `music_catalogue` fixture (different
-schema), so `diff -r tests/expected/ tests/output/` will NOT match byte-for-byte —
-`expected/` documents the desired style, not a byte target for the demo.
+`users` schema. The demo runs on the local `tests/Fixtures/Demo.dhall` fixture
+(different schema), so `diff -r tests/expected/ tests/output/` will NOT match
+byte-for-byte — `expected/` documents the desired style, not a byte target.
 
 ## Reference Implementations
 

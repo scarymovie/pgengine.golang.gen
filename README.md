@@ -12,42 +12,44 @@ Go code generator for [pGenie](https://github.com/pgenie-io/pgenie) - generates 
 
 ## Installation
 
-```bash
-# Install pGenie CLI
-npm install -g pgenie
+Install the [pGenie CLI (`pgn`)](https://pgenie.io/docs/guides/installation/),
+then reference this generator in your project's `project1.pgn.yaml`:
 
-# Add this generator to your project
-pgenie add generator golang
+```yaml
+space: my_space
+name: my_project
+version: 1.0.0
+postgres: 18
+
+artifacts:
+  go: https://github.com/scarymovie/pgengine.golang.gen/raw/main/gen/Gen.dhall
+  # or a local path to gen/Gen.dhall
 ```
 
 ## Quick Start
 
-### 1. Write SQL queries
+### 1. Write SQL
 
-Create a `queries.sql` file:
+A pGenie project is plain SQL: `migrations/*.sql` for the schema and one
+parameterized query per file in `queries/*.sql` (see
+[pgenie-io/demo](https://github.com/pgenie-io/demo)):
 
 ```sql
--- name: GetUser :one
-SELECT id, name, email, bio, created_at
-FROM users
-WHERE id = $1;
-
--- name: ListUsers :many
-SELECT id, name, email
-FROM users
-ORDER BY id;
-
--- name: CreateUser :one
-INSERT INTO users (name, email)
-VALUES ($1, $2)
-RETURNING id, name, email, bio, created_at;
+-- queries/get_user.sql
+select id, name, email, bio, created_at
+from users
+where id = :id
 ```
 
 ### 2. Generate Go code
 
 ```bash
-pgenie generate
+pgn generate
 ```
+
+pGenie validates the schema and queries against a real PostgreSQL instance,
+infers parameter and result types (including nullability and cardinality)
+and emits the Go package into `artifacts/go/`.
 
 ### 3. Use generated code
 
@@ -133,36 +135,18 @@ func transferMoney(ctx context.Context, conn *pgx.Conn, from, to int64, amount i
 }
 ```
 
-## Query Annotations
+## Result Cardinality
 
-### Result Cardinality
+pGenie infers the result shape from the query itself; the generated method
+signature follows it:
 
-- `:one` - Returns a single row (error if not found)
-- `:many` - Returns a slice of rows (empty slice if none)
-- `:exec` - Executes query without returning rows
-
-### Examples
-
-```sql
--- name: GetUser :one
--- Returns: (User, error)
--- Error if no rows found
-SELECT * FROM users WHERE id = $1;
-
--- name: FindUser :one
--- Returns: (*User, error)
--- nil if no rows found (optional)
-SELECT * FROM users WHERE email = $1;
-
--- name: ListUsers :many
--- Returns: ([]User, error)
--- Empty slice if no rows
-SELECT * FROM users;
-
--- name: DeleteUser :exec
--- Returns: error
-DELETE FROM users WHERE id = $1;
-```
+| Result | Go signature |
+|--------|--------------|
+| Single row | `(Row, error)` — error if not found |
+| Optional row | `(*Row, error)` — `nil` if not found |
+| Multiple rows | `([]Row, error)` |
+| Rows affected | `(int64, error)` |
+| Void | `error` |
 
 ## Type Mapping
 
@@ -182,35 +166,43 @@ and there are no third-party dependencies in generated signatures.
 | `date`, `time`, `timestamp`, `timestamptz` | `time.Time` | `*time.Time` |
 | `bytea` | `[]byte` | `[]byte` |
 | `json`, `jsonb` | `[]byte` | `[]byte` |
-| `uuid`, `numeric`, `inet`, `cidr`, `interval` | `string` | `*string` |
+| `uuid`, `numeric`, `inet`, `cidr`, `interval`, `macaddr`, `timetz`, `ltree` | `string` | `*string` |
 
+Arrays map to slices (`[]T` per dimension, nullable element → `[]*T`).
 Types with no native Go equivalent (`uuid`, `numeric`, `inet`, ...) are exposed
-as a canonical `string`: scanned into a `pgtype.*` field internally and converted,
-so `pgtype` never leaks into a public signature. Other PostgreSQL types are
-currently unsupported and produce a generation error.
+as their canonical text form (`string`); pgx scans and encodes them directly,
+the few types whose binary codec can't (`inet`/`cidr`/`interval`) are fetched
+in text format automatically. Other PostgreSQL types are currently unsupported
+and produce a generation error.
 
 ## Configuration
 
-Create a `pgenie.dhall` file:
+All keys are optional (`config` may be omitted entirely):
 
-```dhall
-let Config = https://raw.githubusercontent.com/pgenie-io/golang.gen/main/gen/Config.dhall
-
-in Config::{
-  , packageName = Some "db"
-  , generateTests = False
-}
+```yaml
+artifacts:
+  go:
+    gen: https://github.com/scarymovie/pgengine.golang.gen/raw/main/gen/Gen.dhall
+    config:
+      packageName: db    # Go package name (default: project name)
+      emitGoMod: true    # emit go.mod, making the artifact a standalone
+                         # module (default: true); set false to vendor the
+                         # package into an existing module
 ```
 
 ## Generated Code Structure
 
 ```
-generated/
-├── go.mod
+artifacts/go/
+├── go.mod          # optional (emitGoMod), standalone module
 ├── db.go           # DBTX interface, Queries struct
-├── models.go       # Custom types (enums, composites)
+├── models.go       # Custom types (enums, composites, domains) + RegisterTypes
 └── queries.sql.go  # Generated query methods
 ```
+
+If the schema defines custom types, call the generated
+`RegisterTypes(ctx, conn)` once per connection (e.g. in `AfterConnect`) so pgx
+can encode and scan them.
 
 ## Why pgx-only?
 
@@ -232,6 +224,17 @@ This generator is inspired by [sqlc](https://sqlc.dev/) but focuses exclusively 
 | Type safety | ✅ native types + pointers | ✅ sql.Null* |
 | Query validation | ✅ pGenie | ✅ Built-in |
 | Code generation | ✅ Dhall | ✅ Go |
+
+## Testing
+
+Requirements: docker, go, git — everything else runs in containers.
+
+```bash
+make check   # dhall type-check + type-mapping unit tests
+make demo    # generate from the local fixture, go vet the output
+make e2e     # full pipeline: real pgn CLI + pgenie-io/demo project
+             # + live PostgreSQL 18; compiles the artifact and runs queries
+```
 
 ## Contributing
 

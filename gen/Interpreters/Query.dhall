@@ -11,6 +11,8 @@ let Prelude = Deps.Prelude
 
 let GoType = ./GoType.dhall
 
+let Lude = Deps.Lude
+
 let Input = Sdk.Project.Query
 
 let Output =
@@ -20,10 +22,6 @@ let Output =
       , needsPgx : Bool
       , needsTextFormats : Bool
       }
-
-let toPascal = Deps.CodegenKit.Name.toTextInPascal
-
-let toCamel = Deps.CodegenKit.Name.toTextInCamel
 
 let memberField = GoType.field
 
@@ -73,15 +71,15 @@ let buildParamArgs =
         Prelude.Text.concatMapSep
           ", "
           Sdk.Project.Member
-          (\(m : Sdk.Project.Member) -> "params.${toPascal m.name}")
+          (\(m : Sdk.Project.Member) -> "params.${m.name.inPascalCase}")
           params
 
 let run =
       \(config : Algebra.Config) ->
       \(input : Input) ->
-        let name = toPascal input.name
+        let name = input.name.inPascalCase
 
-        let sqlConst = "${toCamel input.name}SQL"
+        let sqlConst = "${input.name.inCamelCase}SQL"
 
         let sql = buildSQL input.fragments
 
@@ -115,8 +113,9 @@ let run =
 
         let resultColumns =
               merge
-                { None = [] : List Sdk.Project.Member
-                , Some =
+                { Void = [] : List Sdk.Project.Member
+                , RowsAffected = [] : List Sdk.Project.Member
+                , Rows =
                     \(rows : Sdk.Project.ResultRows) ->
                       Prelude.NonEmpty.toList Sdk.Project.Member rows.columns
                 }
@@ -138,7 +137,7 @@ let run =
 
         let resultPart =
               merge
-                { None =
+                { Void =
                   { method =
                       ''
                       func (q *Queries) ${name}(ctx context.Context${paramDecl}) error {
@@ -151,7 +150,23 @@ let run =
                   , needsErrors = False
                   , needsPgx = False
                   }
-                , Some =
+                , RowsAffected =
+                  { method =
+                      ''
+                      func (q *Queries) ${name}(ctx context.Context${paramDecl}) (int64, error) {
+                      	tag, err := q.db.Exec(ctx, ${sqlConst}${paramArgs})
+                      	if err != nil {
+                      		return 0, err
+                      	}
+                      	return tag.RowsAffected(), nil
+                      }
+                      ''
+                  , rowStruct = ""
+                  , needsTime = False
+                  , needsErrors = False
+                  , needsPgx = False
+                  }
+                , Rows =
                     \(rows : Sdk.Project.ResultRows) ->
                       let columns =
                             Prelude.NonEmpty.toList
@@ -232,8 +247,6 @@ let run =
                 }
                 input.result
 
-        -- No trailing newline: the method template already ends with one, and
-        -- Project.dhall joins bodies with "\n" (one blank line between queries).
         let body =
               ''
               const ${sqlConst} = `${sql}`
@@ -241,7 +254,7 @@ let run =
               ${paramsStruct}${resultPart.rowStruct}${resultPart.method}''
 
         in  if    Prelude.List.null Text typeErrors
-            then  Sdk.Compiled.applicative.pure
+            then  Lude.Compiled.applicative.pure
                     Output
                     { body
                     , needsTime = paramsNeedTime || resultPart.needsTime
@@ -249,7 +262,7 @@ let run =
                     , needsPgx = resultPart.needsPgx
                     , needsTextFormats
                     }
-            else  Sdk.Compiled.err
+            else  Lude.Compiled.err
                     Output
                     [ input.srcPath ]
                     (Prelude.Text.concatSep "; " typeErrors)
