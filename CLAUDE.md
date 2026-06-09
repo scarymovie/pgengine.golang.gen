@@ -27,6 +27,8 @@ The generator is written in Dhall:
   - `Project.dhall` — `Project → List Sdk.File` (emits `go.mod`, `db.go`, queries).
   - `Query.dhall` — one `Query → Go file` (SQL const, Params struct, Row struct, method).
   - `Primitive.dhall` — the PostgreSQL→Go type table.
+  - `GoType.dhall` — shared Member/Value → Go type mapping (arrays,
+    nullability, unsupported-type errors). Tests: `tests/GoType.test.dhall`.
 
 The reference for the desired output is **tests/expected/** (golden files). The
 generator output is diffed against it.
@@ -63,6 +65,9 @@ dependencies (no `google/uuid`, etc.).
 - **NOT NULL** → native type (`string`, `int64`, `time.Time`, ...).
 - **Nullable** → pointer (`*string`, `*int64`, `*time.Time`, ...). Slices like
   `[]byte` are already nilable, so nullable == NOT NULL.
+- **Arrays** (`value.arraySettings`) → slices, `[]T` per dimension. Nullable
+  element → pointer element (`[]*string`); a nullable array is just the slice
+  (already nilable).
 
 `pgtype.*` may appear **only inside generated code** as an internal scan target;
 it never appears in a public signature.
@@ -77,7 +82,7 @@ it never appears in a public signature.
 | `date/time/timestamp/timestamptz` | `time.Time` | `*time.Time` | needs `time` import |
 | `bytea` | `[]byte` | `[]byte` | |
 | `json/jsonb` | `[]byte` | `[]byte` | |
-| `uuid/numeric/inet/cidr/interval/macaddr/timetz` | `string` | `*string` | **viaString**: scanned via `pgtype.*` internally, exposed as `string` |
+| `uuid/numeric/inet/cidr/interval/macaddr/timetz/ltree` | `string` | `*string` | **viaString**: scanned via `pgtype.*` internally, exposed as `string` |
 | everything else | — | — | unsupported → compile error |
 
 **viaString rationale:** Go has no stdlib type for `uuid`/`numeric`/etc. Other
@@ -168,10 +173,12 @@ computed imports.
 
 Phase 2 (not done — see the plan for details):
 
-- ⏳ Unsupported types (`supported = False`, e.g. `ltree`) should report a
-  generation error; currently emit an empty Go type.
-- ⏳ Arrays — `value.arraySettings` ignored; `unnest($1::text[])` params come out
-  as `string` instead of `[]string`.
+- ✅ Unsupported types (`supported = False`, e.g. `tsvector`) report a
+  generation error (`Sdk.Compiled.err`, path = query srcPath) instead of
+  emitting an empty Go type. `ltree` is supported via viaString.
+- ✅ Arrays — `value.arraySettings` maps to slices (`[]T` per dimension,
+  nullable element → `[]*T`). Shared mapping lives in
+  `gen/Interpreters/GoType.dhall` (unit tests: `tests/GoType.test.dhall`).
 - ⏳ Custom types (enums, composites) → `models.go`; currently referenced
   (`AlbumFormat`, ...) but undefined.
 - ⏳ viaString conversion (uuid/numeric → string) — internal pgtype scan + convert.

@@ -10,7 +10,7 @@ let Sdk = Deps.Sdk
 
 let Prelude = Deps.Prelude
 
-let PrimMap = ./Primitive.dhall
+let GoType = ./GoType.dhall
 
 let Input = Sdk.Project.Query
 
@@ -25,39 +25,37 @@ let toPascal = Deps.CodegenKit.Name.toTextInPascal
 
 let toCamel = Deps.CodegenKit.Name.toTextInCamel
 
--- Go type info for a Member (notNull/nullable picked by isNullable).
-let memberType =
-      \(m : Sdk.Project.Member) ->
-        let info =
-              merge
-                { Primitive = PrimMap.run
-                , Custom =
-                    \(name : Sdk.Project.Name) ->
-                      { notNull = toPascal name
-                      , nullable = "*${toPascal name}"
-                      , needsTime = False
-                      , viaString = False
-                      , supported = True
-                      }
-                }
-                m.value.scalar
-
-        in  { goType = if m.isNullable then info.nullable else info.notNull
-            , needsTime = info.needsTime
-            }
-
 -- Struct field line for a Member.
-let memberField =
-      \(m : Sdk.Project.Member) ->
-        "\t${toPascal m.name} ${(memberType m).goType} `db:\"${m.pgName}\"`"
+let memberField = GoType.field
 
 -- Any member maps to time.Time?
 let anyNeedsTime =
       \(members : List Sdk.Project.Member) ->
         Prelude.List.any
           Sdk.Project.Member
-          (\(m : Sdk.Project.Member) -> (memberType m).needsTime)
+          (\(m : Sdk.Project.Member) -> (GoType.forMember m).needsTime)
           members
+
+-- Unsupported-type errors for a list of members, prefixed with their role
+-- (param/column) and pg name.
+let memberErrors =
+      \(label : Text) ->
+      \(members : List Sdk.Project.Member) ->
+        Prelude.List.unpackOptionals
+          Text
+          ( Prelude.List.map
+              Sdk.Project.Member
+              (Optional Text)
+              ( \(m : Sdk.Project.Member) ->
+                  merge
+                    { None = None Text
+                    , Some =
+                        \(e : Text) -> Some "${label} \"${m.pgName}\": ${e}"
+                    }
+                    (GoType.forMember m).err
+              )
+              members
+          )
 
 -- Reconstruct SQL with $1,$2,... placeholders.
 let buildSQL =
@@ -120,6 +118,19 @@ let run =
               if hasParams then ", " ++ buildParamArgs input.params else ""
 
         let paramsNeedTime = anyNeedsTime input.params
+
+        let resultColumns =
+              merge
+                { None = [] : List Sdk.Project.Member
+                , Some =
+                    \(rows : Sdk.Project.ResultRows) ->
+                      Prelude.NonEmpty.toList Sdk.Project.Member rows.columns
+                }
+                input.result
+
+        let typeErrors =
+                memberErrors "param" input.params
+              # memberErrors "column" resultColumns
 
         -- result handling: Optional ResultRows
         let resultPart =
@@ -222,12 +233,17 @@ let run =
               ${paramsStruct}${resultPart.rowStruct}${resultPart.method}
               ''
 
-        in  Sdk.Compiled.applicative.pure
-              Output
-              { body
-              , needsTime = paramsNeedTime || resultPart.needsTime
-              , needsErrors = resultPart.needsErrors
-              , needsPgx = resultPart.needsPgx
-              }
+        in  if    Prelude.List.null Text typeErrors
+            then  Sdk.Compiled.applicative.pure
+                    Output
+                    { body
+                    , needsTime = paramsNeedTime || resultPart.needsTime
+                    , needsErrors = resultPart.needsErrors
+                    , needsPgx = resultPart.needsPgx
+                    }
+            else  Sdk.Compiled.err
+                    Output
+                    [ input.srcPath ]
+                    (Prelude.Text.concatSep "; " typeErrors)
 
 in  Algebra.module Input Output run
