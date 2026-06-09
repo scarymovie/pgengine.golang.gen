@@ -232,12 +232,13 @@ let run =
                 }
                 input.result
 
+        -- No trailing newline: the method template already ends with one, and
+        -- Project.dhall joins bodies with "\n" (one blank line between queries).
         let body =
               ''
               const ${sqlConst} = `${sql}`
 
-              ${paramsStruct}${resultPart.rowStruct}${resultPart.method}
-              ''
+              ${paramsStruct}${resultPart.rowStruct}${resultPart.method}''
 
         in  if    Prelude.List.null Text typeErrors
             then  Sdk.Compiled.applicative.pure

@@ -163,6 +163,13 @@ docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
 docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
   dhall to-directory-tree --file tests/Demo.dhall --output tests/output --allow-path-separators
 # Inspect tests/output/queries.sql.go (different schema than tests/expected/, so no byte diff)
+
+# Unit tests for the type mapping (asserts fail evaluation on mismatch)
+docker run --rm -v "$PWD:/work" -w /work dhallhaskell/dhall \
+  dhall --file tests/GoType.test.dhall
+
+# Verify generated output compiles; align struct fields
+cd tests/output && go mod tidy && go vet ./... && gofmt -w .
 ```
 
 ## Status
@@ -193,7 +200,9 @@ Phase 2 (not done — see the plan for details):
 - ✅ viaString — no conversion machinery needed: pgx scans/encodes `string`
   directly; inet/cidr/interval result columns get `forceTextFormats`
   (`needsTextFormat` in `Primitive.dhall`). E2E-verified against PostgreSQL 16.
-- ⏳ Cosmetics: gofmt alignment, blank lines between queries.
+- ✅ Cosmetics: exactly one blank line between queries. Struct-field alignment
+  is left to `gofmt -w` as a post-generation step (pure Dhall cannot measure
+  text length); the output is otherwise gofmt-clean.
 
 **Note on `tests/expected/`:** it is a hand-written style reference on a simple
 `users` schema. The demo runs on the gen-sdk `music_catalogue` fixture (different
