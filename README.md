@@ -22,9 +22,14 @@ version: 1.0.0
 postgres: 18
 
 artifacts:
-  go: https://github.com/scarymovie/pgengine.golang.gen/raw/main/gen/Gen.dhall
-  # or a local path to gen/Gen.dhall
+  go: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.1.0/resolved.dhall
 ```
+
+Each release ships `resolved.dhall` — a frozen, self-contained Dhall package
+with all imports resolved, so generation needs no extra network fetches. For
+the development version use
+`https://github.com/scarymovie/pgengine.golang.gen/raw/main/gen/Gen.dhall`
+or a local path to `gen/Gen.dhall`.
 
 ## Quick Start
 
@@ -182,7 +187,7 @@ All keys are optional (`config` may be omitted entirely):
 ```yaml
 artifacts:
   go:
-    gen: https://github.com/scarymovie/pgengine.golang.gen/raw/main/gen/Gen.dhall
+    gen: https://github.com/scarymovie/pgengine.golang.gen/releases/download/v0.1.0/resolved.dhall
     config:
       packageName: db    # Go package name (default: project name)
       emitGoMod: true    # emit go.mod, making the artifact a standalone
@@ -203,6 +208,29 @@ artifacts/go/
 If the schema defines custom types, call the generated
 `RegisterTypes(ctx, conn)` once per connection (e.g. in `AfterConnect`) so pgx
 can encode and scan them.
+
+## Wiring the Artifact into Your Module
+
+With the default `emitGoMod: true` the artifact is a standalone Go module.
+Hook it up to your project with a workspace:
+
+```bash
+go work init . ./artifacts/go
+```
+
+or with a `replace` directive in your `go.mod`:
+
+```
+require my_space/my_project v0.0.0
+replace my_space/my_project => ./artifacts/go
+```
+
+(the module path is `<space>/<packageName>` from your `project1.pgn.yaml`;
+the version is arbitrary since the directory replacement overrides it)
+
+With `emitGoMod: false` only package sources are emitted — point the artifact
+output into a subdirectory of your module and import it as a regular internal
+package.
 
 ## Why pgx-only?
 
@@ -238,11 +266,11 @@ make e2e     # full pipeline: real pgn CLI + pgenie-io/demo project
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome!
 
 ## License
 
-GPL-3.0 - see [LICENSE](LICENSE) for details.
+MIT - see [LICENSE](LICENSE) for details.
 
 ## Related Projects
 
